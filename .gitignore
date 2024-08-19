@@ -1,0 +1,11 @@
+/build/
+
+# Nix
+/result
+/outputs
+
+# Visual Studio Code
+.vscode
+
+#venv
+.venv/

@@ -1,0 +1,10 @@
+---
+# Formatter for .td files
+Language: TableGen
+BasedOnStyle: LLVM
+IndentWidth: 2
+---
+# Formatter for .h, .cpp, etc.
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 2
