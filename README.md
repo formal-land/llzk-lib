@@ -2,20 +2,29 @@
 
 Veridise's intermediate representation for zero knowledge languages.
 
-### Setup
+## Setup
+
+There are two options for setting up the environment:
+* Nix (recommended)
+* manual (does not require Nix)
+
+Tip: Following the manual setup steps through cloning the LLVM project in the
+`third-party` directory may enable code exploration in your IDE.
+
+### Nix setup
 
 This repository is already configured with a Nix flakes environment.
 
-To build the ZKIR derivation, you can run `nix build .#zkir` (add `-L` if you
-want to print the logs while building).
+To use the ZKIR derivation to build and test the project, you can run `nix build`
+from the repository root (add `-L` if you want to print the logs while building).
 
-To launch a developer shell, run the following command:
+Alternatively, to launch a developer shell, run the following command:
 
 ```bash
-nix develop .
+nix develop
 ```
 
-Then the following command can be used to generate the CMake configuration:
+Within the developer shell, run the following command to generate the CMake configuration:
 
 ```bash
 phases=configurePhase genericBuild
@@ -34,10 +43,82 @@ Notes:
 * Nix 2.13 is assumed. Compatibility with other versions has not been checked
   yet, but they should work.
 
+### Manual build setup
+
+ZKIR requires the following to be installed:
+
+* CMake 3.18 or newer
+* LLVM (git tag `llvmorg-18.1.8`) with MLIR enabled
+  (the following script will do this for you)
+* Doxygen (optional, for generating API documentation during development)
+
+To run tests, you also need:
+* Python 3
+* llvm-lit
+
+Note that tests are enabled by default; they can be disabled by setting
+`-DBUILD_TESTING=off` when invoking CMake.
+
+Once you have CMake, Ninja, and Python3, you can use the following script to
+build the rest of the dependencies and ZKIR:
+
+```bash
+# Start from zkir repo top level.
+
+# First, build LLVM + MLIR
+mkdir third-party
+pushd third-party
+
+# This is where llvm will be installed
+export INSTALL_ROOT="$PWD/llvm-install-root"
+mkdir "$INSTALL_ROOT"
+
+# Build LLVM (note that this will take a while, around 10 minutes on a Mac M1)
+git clone https://github.com/llvm/llvm-project.git -b llvmorg-18.1.8 --depth 1
+pushd llvm-project
+mkdir build && cd build
+cmake ../llvm -GNinja -DCMAKE_BUILD_TYPE=Release \
+  -DLLVM_ENABLE_PROJECTS=mlir \
+  -DLLVM_INCLUDE_BENCHMARKS=off \
+  -DLLVM_INCLUDE_EXAMPLES=off \
+  -DLLVM_BUILD_TESTS=off \
+  -DLLVM_TARGETS_TO_BUILD=host \
+  -DCMAKE_INSTALL_PREFIX="$INSTALL_ROOT" \
+  -DLLVM_BUILD_LLVM_DYLIB=on \
+  -DLLVM_LINK_LLVM_DYLIB=on \
+  -DLLVM_ENABLE_RTTI=on \
+  -DLLVM_ENABLE_EH=on \
+  -DLLVM_ENABLE_ASSERTIONS=on
+# Note that using llvm dylib will cause zkir to be linked to the built LLVM
+# dylib; if you'd like zkir to be used independent of the build folder, you
+# should leave off the dylib settings.
+
+cmake --build .
+cmake --build . --target install
+popd
+
+popd # third-party
+
+
+# Should be back at top level.
+
+# Generate ZKIR build configuration.
+# You can set BUILD_TESTING=off if you don't want to enable tests.
+mkdir build && cd build
+cmake .. -GNinja \
+  -DLLVM_DIR="$INSTALL_ROOT"/lib/cmake/llvm \
+  -DMLIR_DIR="$INSTALL_ROOT"/lib/cmake/mlir \
+  -DLLVM_EXTERNAL_LIT="$INSTALL_ROOT"/bin/lit \
+  -Dantlr4-runtime_DIR="$INSTALL_ROOT"/lib/cmake/antlr4-runtime \
+  -Dantlr4-generator_DIR="$INSTALL_ROOT"/lib/cmake/antlr4-generator \
+  -DGTEST_ROOT="$INSTALL_ROOT" \
+  -DZKIR_BUILD_DEVTOOLS=ON
+```
+
 ## Development workflow
 
-Once you have generated the build configuration and are in the build folder, you
-can run the following commands:
+Once you have generated the build configuration and are in the `build` directory,
+you can run the following commands:
 
 * Compile: `cmake --build .`
 * Run all tests: `cmake --build . --target check`
