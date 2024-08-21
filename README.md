@@ -98,8 +98,6 @@ cmake --build . --target install
 popd
 
 popd # third-party
-
-
 # Should be back at top level.
 
 # Generate ZKIR build configuration.
@@ -109,8 +107,6 @@ cmake .. -GNinja \
   -DLLVM_DIR="$INSTALL_ROOT"/lib/cmake/llvm \
   -DMLIR_DIR="$INSTALL_ROOT"/lib/cmake/mlir \
   -DLLVM_EXTERNAL_LIT="$INSTALL_ROOT"/bin/lit \
-  -Dantlr4-runtime_DIR="$INSTALL_ROOT"/lib/cmake/antlr4-runtime \
-  -Dantlr4-generator_DIR="$INSTALL_ROOT"/lib/cmake/antlr4-generator \
   -DGTEST_ROOT="$INSTALL_ROOT" \
   -DZKIR_BUILD_DEVTOOLS=ON
 ```
