@@ -4,6 +4,10 @@
 /result
 /outputs
 
+# Manual build setup
+/third-party/llvm-project
+/third-party/llvm-install-root
+
 # Visual Studio Code
 .vscode
 
