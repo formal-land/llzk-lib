@@ -48,8 +48,7 @@ Notes:
 ZKIR requires the following to be installed:
 
 * CMake 3.18 or newer
-* LLVM (git tag `llvmorg-18.1.8`) with MLIR enabled
-  (the following script will do this for you)
+* Ninja
 * Doxygen (optional, for generating API documentation during development)
 
 To run tests, you also need:
