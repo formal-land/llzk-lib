@@ -64,6 +64,59 @@
         zkirWithPython = final.zkir.override {
           mlir = final.mlirWithPython;
         };
+        zkirDebugClang = (final.zkir.override { stdenv = final.clangStdenv; }).overrideAttrs(attrs: {
+          cmakeBuildType = "DebWithSans";
+
+          postInstall = ''
+            if [ -f test/report.xml ]; then
+              mkdir -p $out/artifacts
+              echo "-- Copying xUnit report to $out/artifacts/clang-report.xml"
+              cp test/report.xml $out/artifacts/clang-report.xml
+            fi
+          '';
+        });
+        zkirDebugClangCov = final.zkirDebugClang.overrideAttrs(attrs: {
+          # TODO: macOS version
+          postCheck = ''
+            MANIFEST=profiles.manifest
+            PROFDATA=coverage.profdata
+            BINS=bins.lst
+            find bin lib -type f | xargs file | grep ELF | grep executable | cut -f1 -d: > $BINS
+            find test -name "*.profraw" > $MANIFEST
+            llvm-profdata merge -sparse -f $MANIFEST -o $PROFDATA
+            OBJS=$( (head -n 1 $BINS ; tail -n +2 $BINS | sed -e "s/^/-object /") | xargs)
+            # TODO HTML reports
+            llvm-cov report $OBJS -instr-profile $PROFDATA > cov-summary.txt
+            echo =========== COVERAGE SUMMARY =================
+            cat cov-summary.txt
+            echo ==============================================
+            llvm-cov export -format=lcov -instr-profile $PROFDATA $OBJS > report.lcov
+            rm -rf $MANIFEST $PROFDATA $BINS
+          '';
+          
+          postInstall = ''
+            mkdir -p $out/artifacts/
+            echo "-- Copying coverage summary to $out/artifacts/cov-summary.txt"
+            cp cov-summary.txt $out/artifacts/
+            echo "-- Copying lcov report to $out/artifacts/report.lcov"
+            cp report.lcov $out/artifacts/
+            if [ -f test/report.xml ]; then
+              echo "-- Copying xUnit report to $out/artifacts/clang-report.xml"
+              cp test/report.xml $out/artifacts/clang-report.xml
+            fi
+          '';
+        });
+        zkirDebugGCC = (final.zkir.override { stdenv = final.gccStdenv; }).overrideAttrs(attrs: {
+          cmakeBuildType = "DebWithSans";
+
+          postInstall = ''
+            if [ -f test/report.xml ]; then
+              mkdir -p $out/artifacts
+              echo "-- Copying xUnit report to $out/artifacts/gcc-report.xml"
+              cp test/report.xml $out/artifacts/gcc-report.xml
+            fi
+          '';
+        });
 
         ccacheStdenv = prev.ccacheStdenv.override {
           extraConfig = ''
@@ -72,36 +125,13 @@
             export CCACHE_COMPRESS=1
           '';
         };
-      };
-    } //
-    (flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ self.overlays.default ];
-        };
-      in
-      {
-        # Now, we can define the actual outputs of the flake
 
-        packages = flake-utils.lib.flattenTree {
-          # Copy the packages from the overlay.
-          inherit (pkgs) zkir zkirWithPython;
-
-          # For debug purposes, expose the MLIR/LLVM packages.
-          inherit (pkgs.zkir_llvm.tools) libllvm;
-          inherit (pkgs.zkir_llvm.tools) llvm;
-          inherit (pkgs) mlir mlirWithPython;
-
-          default = pkgs.zkir;
-        };
-
-        devShells = flake-utils.lib.flattenTree {
-          # The default shell is used for ZKIR development.
-          # Because `nix develop` is used to set up a dev shell for a given
-          # derivation, we just need to extend the zkir derivation with any
-          # extra tools we need.
-          default = pkgs.zkir.overrideAttrs (old: {
+        # The default shell is used for ZKIR development.
+        # Because `nix develop` is used to set up a dev shell for a given
+        # derivation, we just need to extend the zkir derivation with any
+        # extra tools we need.
+        devShellBase = { pkgs, zkirEnv ? final.zkir }: {
+          shell = zkirEnv.overrideAttrs (old: {
             nativeBuildInputs = old.nativeBuildInputs ++ (with pkgs; [
               doxygen
 
@@ -111,9 +141,6 @@
               # git-clang-format
               libclang.python
             ]);
-
-            # Use Debug by default so assertions are enabled by default.
-            cmakeBuildType = "Debug";
 
             shellHook = ''
               # needed to get accurate compile_commands.json
@@ -126,6 +153,41 @@
               export PYTHONPATH="$PYTHONPATH":"$PWD"/build/python
             '';
           });
+        };
+      };
+    } //
+    (flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ self.overlays.default ];
+        };
+      in
+      {
+        # Now, we can define the actual outputs of the flake
+        packages = flake-utils.lib.flattenTree {
+          # Copy the packages from the overlay.
+          inherit (pkgs) zkir zkirWithPython;
+
+          # For debug purposes, expose the MLIR/LLVM packages.
+          inherit (pkgs.zkir_llvm.tools) libllvm;
+          inherit (pkgs.zkir_llvm.tools) llvm;
+          inherit (pkgs) mlir mlirWithPython;
+
+          default = pkgs.zkir;
+          debugClang = pkgs.zkirDebugClang;
+          debugClangCov = pkgs.zkirDebugClangCov;
+          debugGCC = pkgs.zkirDebugGCC;
+        };
+
+        devShells = flake-utils.lib.flattenTree {
+
+          default = (pkgs.devShellBase pkgs).shell.overrideAttrs (_: {
+            # Use Debug by default so assertions are enabled by default.
+            cmakeBuildType = "Debug";
+          });
+          debugClang = (pkgs.devShellBase pkgs pkgs.zkirDebugClang).shell;
+          debugGCC = (pkgs.devShellBase pkgs pkgs.zkirDebugGCC).shell;
 
           llvm = pkgs.mkShell {
             buildInputs = [ pkgs.zkir_llvm.tools.libllvm.dev ];

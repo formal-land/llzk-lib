@@ -7,6 +7,8 @@ target_sources(ZKIRDialect PRIVATE ${ZKIRDialect_SOURCES})
 target_link_libraries(ZKIRDialect
   PUBLIC ZKIRDialectHeaders MLIRIR MLIRPass
 )
+target_link_libraries(ZKIRDialect
+  PRIVATE LLVMHeaders MLIRHeaders)
 add_dependencies(ZKIRDialect ZKIRDialectHeaders)
 zkir_target_add_mlir_link_settings(ZKIRDialect)
 

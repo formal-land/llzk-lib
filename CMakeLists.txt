@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.25) 
 
 project(ZKIR
   DESCRIPTION "Veridise's intermediate representation for zero knowledge languages"
@@ -6,9 +6,11 @@ project(ZKIR
   HOMEPAGE_URL https://github.com/Veridise/zkir-lib
 )
 
+option(ZKIR_TEMPLATE_BACKTRACE_LIMIT "Add -ftemplate-backtrace-limit=0 to the compile flags")
+
 include(GNUInstallDirs)
 
-set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard")
+set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard")
 set(CMAKE_CXX_STANDARD_REQUIRED ON CACHE STRING "")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
@@ -27,8 +29,17 @@ find_package(MLIR REQUIRED CONFIG)
 message(STATUS "Using LLVM in: ${LLVM_DIR}")
 message(STATUS "Using MLIR in: ${MLIR_DIR}")
 
+# Adds an INTERFACE library that only includes headers
+function(add_header_library _name _include_dirs)
+  add_library(${_name} INTERFACE)
+  target_include_directories(${_name} INTERFACE ${_include_dirs})
+  install(TARGETS ${_name} EXPORT ZKIRTargets)
+endfunction()
+
 # LLVM & MLIR do not propagate their include dirs correctly
-include_directories(${LLVM_INCLUDE_DIRS} ${MLIR_INCLUDE_DIRS})
+# We define them as INTERFACE libraries and link against them
+add_header_library(LLVMHeaders ${LLVM_INCLUDE_DIRS})
+add_header_library(MLIRHeaders ${MLIR_INCLUDE_DIRS})
 
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
@@ -39,14 +50,60 @@ include(HandleLLVMOptions)
 
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS_LIST})
-add_compile_options(-Werror=switch -Wall -Wextra -Wno-unused-parameter)
+add_compile_options(
+  -Werror=switch 
+  -Werror=return-type 
+  -Wall 
+  -Wextra 
+  -Wno-unused-parameter 
+  -Wshadow 
+  -Wnon-virtual-dtor 
+  -pedantic 
+  -fno-omit-frame-pointer
+)
 
-set(CMAKE_VISIBILITY_INLINES_HIDDEN ON CACHE BOOL "Hide inlines")
-# For static LLVM, ensure hidden visibility to be consistent with LLVM build
-# TODO: is this actually needed?
-if(NOT ${BUILD_SHARED_LIBS})
-  set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+if(CMAKE_CONFIGURATION_TYPES)
+  list(APPEND CMAKE_CONFIGURATION_TYPES DebWithSans)
+  list(REMOVE_DUPLICATES CMAKE_CONFIGURATION_TYPES)
 endif()
+
+set(ZKIR_LIT_COMPATIBLE_COVERAGE OFF CACHE INTERNAL "")
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "DebWithSans")
+  if(ZKIR_LIT_COMPATIBLE_COVERAGE)
+    message(FATAL_ERROR "Don't manually set ZKIR_LIT_COMPATIBLE_COVERAGE.")
+  endif()
+  if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+    message(STATUS "Adding coverage flags")
+    add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+    add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+    set(ZKIR_LIT_COMPATIBLE_COVERAGE ON)
+    message(STATUS "ZKIR_LIT_COMPATIBLE_COVERAGE=${ZKIR_LIT_COMPATIBLE_COVERAGE}")
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    message(WARNING "Gcov reports are not supported by the test environment.")
+    message(WARNING "Set ZKIR_FORCE_GCC_COVERAGE to enable coverage in GCC.")
+    if(ZKIR_FORCE_GCC_COVERAGE)
+      add_compile_options(--coverage -O0 -g)
+      add_link_options(--coverage)
+    endif()
+  else()
+    message(WARNING "Coverage requested but ${CMAKE_CXX_COMPILER_ID} is not a supported compiler and coverage will not be applied.")
+  endif()
+
+  add_compile_options(-O0 -g)
+endif()
+
+if (CMAKE_BUILD_TYPE STREQUAL "DebWithSans")
+  add_compile_options(-fsanitize=address,undefined)
+  add_link_options(-fsanitize=address,undefined)
+endif()
+
+if (ZKIR_TEMPLATE_BACKTRACE_LIMIT)
+  add_compile_options(-ftemplate-backtrace-limit=0)
+endif()
+
+# MAYBE FIXME: If we want to hide inline functions we need to setup macros
+# See https://github.com/Veridise/zkir-lib/pull/3#discussion_r1726140891
 
 ### Python bindings
 
@@ -97,7 +154,6 @@ add_library(ZKIR::AllDialects ALIAS ZKIRAllDialects)
 add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(tools)
-
 if(ZKIR_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)
 endif()

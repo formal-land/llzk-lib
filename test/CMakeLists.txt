@@ -18,6 +18,14 @@ if(ZKIR_ENABLE_BINDINGS_PYTHON)
     set(ZKIR_ENABLE_BINDINGS_PYTHON_STRING "True")
 endif()
 
+set(ZKIR_LIT_COMPATIBLE_COVERAGE_STRING "False")
+if(ZKIR_LIT_COMPATIBLE_COVERAGE)
+  message(STATUS "Lit will generate coverage information for every test")
+  set(ZKIR_LIT_COMPATIBLE_COVERAGE_STRING "True")
+endif()
+
+set(LIT_ARGS "--xunit-xml-output report.xml")
+
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
@@ -28,4 +36,5 @@ configure_lit_site_cfg(
 add_lit_testsuite(check-lit "Running the lit-based regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${ZKIR_TEST_DEPENDS}
+  ARGS ${LIT_ARGS}
 )
