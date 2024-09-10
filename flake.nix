@@ -131,9 +131,7 @@
           inherit (pkgs) zkir zkirWithPython;
 
           # For debug purposes, expose the MLIR/LLVM packages.
-          inherit (pkgs.zkir_llvm.tools) libllvm;
-          inherit (pkgs.zkir_llvm.tools) llvm;
-          inherit (pkgs) mlir mlirWithPython;
+          inherit (pkgs) libllvm llvm mlir mlirWithPython;
 
           default = pkgs.zkir;
           debugClang = pkgs.zkirDebugClang;
@@ -151,7 +149,7 @@
           debugGCC = _: (pkgs.devShellBase pkgs pkgs.zkirDebugGCC).shell;
 
           llvm = pkgs.mkShell {
-            buildInputs = [ pkgs.zkir_llvm.tools.libllvm.dev ];
+            buildInputs = [ pkgs.libllvm.dev ];
           };
         };
       }
