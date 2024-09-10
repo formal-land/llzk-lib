@@ -102,14 +102,14 @@
       "locked": {
         "lastModified": 1725938746,
         "narHash": "sha256-f/xQDonHk7KOT4XOWbhI70GMC8g2WvyLFhEJ+v4FR/U=",
-        "ref": "bryan/mlir",
+        "ref": "main",
         "rev": "7c4040997ac1c2ce972c78ef2cad0dd8c03bcc44",
         "revCount": 19,
         "type": "git",
         "url": "ssh://git@github.com/Veridise/veridise-nix-pkgs.git"
       },
       "original": {
-        "ref": "bryan/mlir",
+        "ref": "main",
         "type": "git",
         "url": "ssh://git@github.com/Veridise/veridise-nix-pkgs.git"
       }
