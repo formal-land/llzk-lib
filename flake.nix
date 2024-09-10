@@ -40,7 +40,9 @@
             PROFDATA=coverage.profdata
             BINS=bins.lst
             find bin lib -type f | xargs file | grep ELF | grep executable | cut -f1 -d: > $BINS
+            ls $BINS
             find test -name "*.profraw" > $MANIFEST
+            ls $MANIFEST
             llvm-profdata merge -sparse -f $MANIFEST -o $PROFDATA
             OBJS=$( (head -n 1 $BINS ; tail -n +2 $BINS | sed -e "s/^/-object /") | xargs)
             # TODO HTML reports
