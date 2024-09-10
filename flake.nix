@@ -1,7 +1,7 @@
 {
   inputs = {
     veridise-pkgs = {
-      url = "git+ssh://git@github.com/Veridise/veridise-nix-pkgs.git?ref=bryan/mlir";
+      url = "git+ssh://git@github.com/Veridise/veridise-nix-pkgs.git?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
