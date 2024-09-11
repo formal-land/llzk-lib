@@ -66,3 +66,6 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 llvm_config.with_environment('PYTHONPATH', [
     os.path.join(config.mlir_obj_dir, 'python_packages', 'zkir'),
 ], append_path=True)
+
+if config.per_test_coverage:
+    config.environment["LLVM_PROFILE_FILE"] = "covdata-%p.profraw"

@@ -11,9 +11,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: cachix/install-nix-action@v27
         with:
-          install_url: https://releases.nixos.org/nix/nix-2.24.1/install
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.CI_BUILD_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+          echo 'echo "$CI_BOT_PAT"' > ~/.git-askpass
+          chmod 500 ~/.git-askpass
+          git config --global core.askPass "$HOME"/.git-askpass
       - uses: cachix/cachix-action@v15
         with:
           name: veridise-private
@@ -22,10 +33,14 @@ jobs:
       - run: mkdir -p xunit-reports
       - name: Build with GCC
         run: nix --print-build-logs build '.#debugGCC'
+        env:
+          CI_BOT_PAT: "${{ secrets.CI_BUILD_TOKEN }}"
       - name: Copy xUnit report for GCC
         run: cp result/artifacts/gcc-report.xml xunit-reports
       - name: Build with Clang
         run: nix --print-build-logs build '.#debugClangCov'
+        env:
+          CI_BOT_PAT: "${{ secrets.CI_BUILD_TOKEN }}"
       - name: Copy xUnit report for clang
         run: cp result/artifacts/clang-report.xml xunit-reports
       - name: Publish Test Results
@@ -33,4 +48,7 @@ jobs:
         if: always()
         with:
           files: xunit-reports/*-report.xml
+      - name: Clear Git credentials
+        if: "${{ always() }}"
+        run: rm -rf "~/.git-askpass"
 
