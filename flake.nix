@@ -39,7 +39,7 @@
             PROFDATA=coverage.profdata
             BINS=bins.lst
             if [[ "$(uname)" == "Darwin" ]]; then
-              find bin lib -type f | xargs file | grep executable | cut -f1 -d: > $BINS
+              find bin lib -type f | xargs file | fgrep Mach-O | grep executable | cut -f1 -d: > $BINS
             else
               find bin lib -type f | xargs file | grep ELF | grep executable | cut -f1 -d: > $BINS
             fi
