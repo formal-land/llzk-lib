@@ -65,6 +65,3 @@ llvm_config.with_environment(
     ],
     append_path=True,
 )
-
-if config.per_test_coverage:
-    llvm_config.with_environment("LLVM_PROFILE_FILE", "this-is-a-test")
