@@ -43,7 +43,9 @@
             else
               find bin lib -type f | xargs file | grep ELF | grep executable | cut -f1 -d: > $BINS
             fi
-            find test -name "*.profraw" > $MANIFEST
+            echo -n "Found profraw files:"
+            find test -name "*.profraw" | tee $MANIFEST | wc -l
+            cat $MANIFEST
             llvm-profdata merge -sparse -f $MANIFEST -o $PROFDATA
             OBJS=$( (head -n 1 $BINS ; tail -n +2 $BINS | sed -e "s/^/-object /") | xargs)
             # TODO HTML reports
