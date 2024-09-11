@@ -67,4 +67,4 @@ llvm_config.with_environment(
 )
 
 if config.per_test_coverage:
-    config.environment["LLVM_PROFILE_FILE"] = "covdata-%%p.profraw"
+    config.environment["LLVM_PROFILE_FILE"] = "covdata-%p.profraw"
