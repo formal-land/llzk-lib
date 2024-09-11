@@ -17,7 +17,10 @@
           enablePythonBindings = true;
         };
 
-        zkir = final.callPackage ./nix/zkir.nix { clang = final.clang_18; };
+        zkir = final.callPackage ./nix/zkir.nix {
+          clang = final.veridise_llvmPackages.clang;
+        };
+
         zkirWithPython = final.zkir.override {
           mlir = final.mlirWithPython;
         };
@@ -100,7 +103,6 @@
 
               # clang-tidy and clang-format
               clang-tools_18
-              clang_18
 
               # git-clang-format
               libclang.python
@@ -146,7 +148,6 @@
         };
 
         devShells = flake-utils.lib.flattenTree {
-
           default = (pkgs.devShellBase pkgs).shell.overrideAttrs (_: {
             # Use Debug by default so assertions are enabled by default.
             cmakeBuildType = "Debug";
