@@ -15,7 +15,7 @@ jobs:
           persist-credentials: false
       - uses: cachix/install-nix-action@v27
         with:
-          install_url: https://releases.nixos.org/nix/nix-2.24.1/install
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
           github_access_token: "${{ secrets.CI_BUILD_TOKEN }}"
       - name: Set Git credentials
         run: |
