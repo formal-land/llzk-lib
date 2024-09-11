@@ -14,7 +14,6 @@ config.zkir_src_root = "@CMAKE_SOURCE_DIR@"
 config.zkir_obj_root = "@CMAKE_BINARY_DIR@"
 if @ZKIR_LIT_COMPATIBLE_COVERAGE_STRING@:
     config.per_test_coverage = True
-    config.environment["LLVM_PROFILE_FILE"] = "%s-this-is-a-test-%%p.profraw"
 
 config.extra_suffixes = [@zkir_lit_extra_suffixes@]
 
