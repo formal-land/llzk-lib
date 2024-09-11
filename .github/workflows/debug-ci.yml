@@ -31,12 +31,13 @@ jobs:
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
           pushFilter: '(-source$)'
       - run: mkdir -p xunit-reports
-      - name: Build with GCC
-        run: nix --print-build-logs build '.#debugGCC'
-        env:
-          CI_BOT_PAT: "${{ secrets.CI_BUILD_TOKEN }}"
-      - name: Copy xUnit report for GCC
-        run: cp result/artifacts/gcc-report.xml xunit-reports
+      # Commented out for quicker iteration on CI
+      # - name: Build with GCC
+      #   run: nix --print-build-logs build '.#debugGCC'
+      #   env:
+      #     CI_BOT_PAT: "${{ secrets.CI_BUILD_TOKEN }}"
+      # - name: Copy xUnit report for GCC
+      #   run: cp result/artifacts/gcc-report.xml xunit-reports
       - name: Build with Clang
         run: nix --print-build-logs build '.#debugClangCov'
         env:
