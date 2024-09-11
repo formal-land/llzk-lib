@@ -17,9 +17,7 @@
           enablePythonBindings = true;
         };
 
-        zkir = final.callPackage ./nix/zkir.nix {
-          clang = final.veridise_llvmPackages.clang;
-        };
+        zkir = final.callPackage ./nix/zkir.nix { clang = final.clang_18; };
 
         zkirWithPython = final.zkir.override {
           mlir = final.mlirWithPython;
@@ -126,6 +124,7 @@
       let
         pkgs = import nixpkgs {
           inherit system;
+
           overlays = [
             self.overlays.default
             veridise-pkgs.overlays.default
