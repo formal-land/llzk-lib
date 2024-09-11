@@ -2,7 +2,7 @@
   stdenv, lib,
 
   # build dependencies
-  cmake, ninja,
+  clang, cmake, ninja,
   mlir, nlohmann_json,
 
   # test dependencies
@@ -31,7 +31,7 @@ stdenv.mkDerivation {
         src = src0;
       };
 
-  nativeBuildInputs = [ cmake ninja ];
+  nativeBuildInputs = [ clang cmake ninja ];
   buildInputs = [
     mlir
   ] ++ lib.optionals mlir.hasPythonBindings [
@@ -43,7 +43,26 @@ stdenv.mkDerivation {
     "-DZKIR_BUILD_DEVTOOLS=ON"
   ];
 
+  # This is done specifically so that the configure phase can find /usr/bin/sw_vers,
+  # which is MacOS specific.
+  # Note that it's important for "/usr/bin/" to be last in the list so we don't
+  # accidentally use the system clang, etc.
+  preConfigure = ''
+    if [[ "$(uname)" == "Darwin" ]]; then
+      export OLD_PATH=$PATH
+      export PATH="$PATH:/usr/bin/"
+    fi
+  '';
+
+  # this undoes the above configuration, as it will cause problems later.
+  postConfigure = ''
+    if [[ "$(uname)" == "Darwin" ]]; then
+      export PATH=$OLD_PATH
+      # unset OLD_PATH
+    fi
+  '';
+
   doCheck = true;
   checkTarget = "check";
-  checkInputs = [ gtest python3 lit z3 cvc5 ];
+  checkInputs = [ clang gtest python3 lit z3 cvc5 ];
 }

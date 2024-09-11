@@ -17,7 +17,7 @@
           enablePythonBindings = true;
         };
 
-        zkir = final.callPackage ./nix/zkir.nix {};
+        zkir = final.callPackage ./nix/zkir.nix { clang = final.clang_18; };
         zkirWithPython = final.zkir.override {
           mlir = final.mlirWithPython;
         };
@@ -34,15 +34,16 @@
           '';
         });
         zkirDebugClangCov = final.zkirDebugClang.overrideAttrs(attrs: {
-          # TODO: macOS version
           postCheck = ''
             MANIFEST=profiles.manifest
             PROFDATA=coverage.profdata
             BINS=bins.lst
-            find bin lib -type f | xargs file | grep ELF | grep executable | cut -f1 -d: > $BINS
-            ls $BINS
+            if [[ "$(uname)" == "Darwin" ]]; then
+              find bin lib -type f | xargs file | grep executable | cut -f1 -d: > $BINS
+            else
+              find bin lib -type f | xargs file | grep ELF | grep executable | cut -f1 -d: > $BINS
+            fi
             find test -name "*.profraw" > $MANIFEST
-            ls $MANIFEST
             llvm-profdata merge -sparse -f $MANIFEST -o $PROFDATA
             OBJS=$( (head -n 1 $BINS ; tail -n +2 $BINS | sed -e "s/^/-object /") | xargs)
             # TODO HTML reports
@@ -97,6 +98,7 @@
 
               # clang-tidy and clang-format
               clang-tools_18
+              clang_18
 
               # git-clang-format
               libclang.python
