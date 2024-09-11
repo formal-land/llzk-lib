@@ -67,6 +67,4 @@ llvm_config.with_environment(
 )
 
 if config.per_test_coverage:
-    print("Setting the profile path config per execution")
-    config.environment["LLVM_PROFILE_FILE"] = "%s-this-is-a-test-%%p.profraw"
-    print("Config:", config.environment)
+    config.environment["LLVM_PROFILE_FILE"] = "covdata-%%p.profraw"
