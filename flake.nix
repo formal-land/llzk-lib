@@ -1,5 +1,7 @@
 {
   inputs = {
+    flake-utils.url = "github:numtide/flake-utils/v1.0.0";
+
     veridise-pkgs = {
       url = "git+ssh://git@github.com/Veridise/veridise-nix-pkgs.git?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -9,7 +11,7 @@
   # Custom colored bash prompt
   nixConfig.bash-prompt = ''\[\e[0;32m\][ZKIR]\[\e[m\] \[\e[38;5;244m\]\w\[\e[m\] % '';
 
-  outputs = { self, nixpkgs, flake-utils, veridise-pkgs, }:
+  outputs = { self, nixpkgs, flake-utils, veridise-pkgs }:
     {
       # First, we define the packages used in this repository/flake
       overlays.default = final: prev: {
@@ -144,6 +146,10 @@
           debugClang = pkgs.zkirDebugClang;
           debugClangCov = pkgs.zkirDebugClangCov;
           debugGCC = pkgs.zkirDebugGCC;
+        };
+
+        checks = flake-utils.lib.flattenTree {
+          zkirInstallCheck = pkgs.callPackage ./nix/zkir-installcheck { };
         };
 
         devShells = flake-utils.lib.flattenTree {

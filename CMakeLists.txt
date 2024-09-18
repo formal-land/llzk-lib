@@ -30,16 +30,17 @@ message(STATUS "Using LLVM in: ${LLVM_DIR}")
 message(STATUS "Using MLIR in: ${MLIR_DIR}")
 
 # Adds an INTERFACE library that only includes headers
-function(add_header_library _name _include_dirs)
+function(add_header_library _name _include_dirs _export_name)
   add_library(${_name} INTERFACE)
   target_include_directories(${_name} INTERFACE ${_include_dirs})
-  install(TARGETS ${_name} EXPORT ZKIRTargets)
+  install(TARGETS ${_name} EXPORT ${_export_name})
 endfunction()
 
+set(ZKIR_EXPORT_TARGETS "ZKIRTargets")
 # LLVM & MLIR do not propagate their include dirs correctly
 # We define them as INTERFACE libraries and link against them
-add_header_library(LLVMHeaders ${LLVM_INCLUDE_DIRS})
-add_header_library(MLIRHeaders ${MLIR_INCLUDE_DIRS})
+add_header_library(LLVMHeaders ${LLVM_INCLUDE_DIRS} ${ZKIR_EXPORT_TARGETS})
+add_header_library(MLIRHeaders ${MLIR_INCLUDE_DIRS} ${ZKIR_EXPORT_TARGETS})
 
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
@@ -225,11 +226,11 @@ add_custom_target(check
 
 ### Install
 
-export(EXPORT ZKIRTargets
-  FILE ${CMAKE_CURRENT_BINARY_DIR}/ZKIRTargets.cmake
+export(EXPORT ${ZKIR_EXPORT_TARGETS}
+  FILE ${CMAKE_CURRENT_BINARY_DIR}/${ZKIR_EXPORT_TARGETS}.cmake
   NAMESPACE ZKIR::
 )
-install(EXPORT ZKIRTargets
+install(EXPORT ${ZKIR_EXPORT_TARGETS}
   NAMESPACE ZKIR::
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ZKIR)
 
