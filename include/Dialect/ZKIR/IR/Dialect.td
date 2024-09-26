@@ -13,6 +13,11 @@ def ZKIRDialect : Dialect {
 
   let cppNamespace = "zkir";
 
+  let dependentDialects = [
+    "mlir::index::IndexDialect",
+    "mlir::func::FuncDialect"
+  ];
+
   let useDefaultTypePrinterParser = true;
   let useDefaultAttributePrinterParser = true;
   // let hasConstantMaterializer = 1;
