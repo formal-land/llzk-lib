@@ -125,6 +125,15 @@ class ZKIR_BinaryFeltOp<string mnemonic, list<Trait> traits = []>
   let assemblyFormat = "$lhs `,` $rhs attr-dict";
 }
 
+
+class ZKIR_UnaryFeltOp<string mnemonic, list<Trait> traits = []>
+    : ZKIR_Op<mnemonic, traits # [SameOperandsAndResultType, Pure]> {
+
+  let arguments = (ins ZKIR_FeltType:$operand);
+  let results = (outs ZKIR_FeltType:$result);
+  let assemblyFormat = "$operand attr-dict";
+}
+
 def ZKIR_AddFeltOp : ZKIR_BinaryFeltOp<"add", [Commutative]> {
   let summary = "Addition operator for field elements";
   let description = [{}];
@@ -142,6 +151,46 @@ def ZKIR_MulFeltOp : ZKIR_BinaryFeltOp<"mul", [Commutative]> {
 
 def ZKIR_DivFeltOp : ZKIR_BinaryFeltOp<"div"> {
   let summary = "Division operator for field elements";
+  let description = [{}];
+}
+
+def ZKIR_ModFeltOp : ZKIR_BinaryFeltOp<"mod"> {
+  let summary = "Modulus/remainder operator for field elements";
+  let description = [{}];
+}
+
+def ZKIR_NegFeltOp : ZKIR_UnaryFeltOp<"neg"> {
+  let summary = "Negation operator for field elements";
+  let description = [{}];
+}
+
+def ZKIR_AndFeltOp : ZKIR_BinaryFeltOp<"and", [Commutative]> {
+  let summary = "Bitwise AND operator for field elements";
+  let description = [{}];
+}
+
+def ZKIR_OrFeltOp : ZKIR_BinaryFeltOp<"or", [Commutative]> {
+  let summary = "Bitwise OR operator for field elements";
+  let description = [{}];
+}
+
+def ZKIR_XorFeltOp : ZKIR_BinaryFeltOp<"xor", [Commutative]> {
+  let summary = "Bitwise XOR operator for field elements";
+  let description = [{}];
+}
+
+def ZKIR_NotFeltOp : ZKIR_UnaryFeltOp<"not"> {
+  let summary = "Bit flip operator for field elements";
+  let description = [{}];
+}
+
+def ZKIR_ShlFeltOp : ZKIR_BinaryFeltOp<"shl"> {
+  let summary = "Left shift operator for field elements";
+  let description = [{}];
+}
+
+def ZKIR_ShrFeltOp : ZKIR_BinaryFeltOp<"shr"> {
+  let summary = "Right shift operator for field elements";
   let description = [{}];
 }
 
