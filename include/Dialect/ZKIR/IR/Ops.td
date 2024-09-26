@@ -26,8 +26,24 @@ def ZKIR_StructDefOp : ZKIR_Op<"struct", [
   IsolatedFromAbove,
   GraphRegionNoTerminator,
 ]> {
-  let summary = "circuit component definition";
-  let description = [{}];
+  let summary = "Circuit struct/component definition";
+  let description = [{
+      Describes a struct/component in a circuit.
+
+      Example:
+
+      ```zkir
+      zkir.struct @ComponentA {
+        func.func public @compute(%a: !zkir.felt) {
+          return
+        }
+
+        func.func public @constrain(%a: !zkir.felt) {
+          return
+        }
+      }
+      ```
+  }];
 
   let arguments = (ins
     SymbolNameAttr:$sym_name,
@@ -43,10 +59,10 @@ def ZKIR_StructDefOp : ZKIR_Op<"struct", [
   let hasRegionVerifier = 1;
 }
 
-def ZKIR_FieldOp : ZKIR_Op<"field", [HasParent<"StructDefOp">, Symbol]> {
-  let summary = "Struct field";
+def ZKIR_FieldDefOp : ZKIR_Op<"field", [HasParent<"StructDefOp">, Symbol]> {
+  let summary = "Struct/component field";
   let description = [{
-    Describes a field in a struct.
+    Describes a field in a struct/component.
 
     Example:
 
@@ -62,7 +78,7 @@ def ZKIR_FieldOp : ZKIR_Op<"field", [HasParent<"StructDefOp">, Symbol]> {
     );
 
   let assemblyFormat = [{
-    $sym_name `:` ($modifiers ^) ? $type attr-dict
+    $sym_name `:` ($modifiers^)? $type attr-dict
   }];
 }
 

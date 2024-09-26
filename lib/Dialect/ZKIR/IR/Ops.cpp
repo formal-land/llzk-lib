@@ -35,7 +35,7 @@ mlir::LogicalResult StructDefOp::verifyRegions() {
   bool foundCompute = false;
   bool foundConstrain = false;
   for (auto &op : getBody().front()) {
-    if (!llvm::isa<FieldOp>(op)) {
+    if (!llvm::isa<FieldDefOp>(op)) {
       if (auto func_def = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
         auto func_name = func_def.getSymName();
         if ("compute" == func_name) {
