@@ -82,6 +82,23 @@ def ZKIR_FieldDefOp : ZKIR_Op<"field", [HasParent<"StructDefOp">, Symbol]> {
   }];
 }
 
+def ZKIR_RefFieldOp : ZKIR_Op<"fref"> {
+  let summary = "Reference a struct/component field.";
+  let description = [{
+    This operation references a named field from a struct/component.
+  }];
+
+  //TODO: I think $component should be "TypedStrAttr<ZKIR_StructType>" but 
+  //  that gives "invalid kind of attribute specified" and maybe requires some
+  //  other work on the symbol table or type system.
+  let arguments = (ins SymbolNameAttr:$component, SymbolNameAttr:$field_name);
+  let results = (outs AnyZKIRType:$field);
+
+  let assemblyFormat = [{
+    $component `[` $field_name `]` attr-dict `:` type($field)
+  }];
+}
+
 def ZKIR_FeltConstantOp : ZKIR_Op<"feltconst", [
   ConstantLike, Pure,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>

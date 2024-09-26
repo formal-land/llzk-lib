@@ -94,3 +94,43 @@ zkir.struct @ComponentE<[@B, @D, @C]> {
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
+
+zkir.struct @ComponentF {
+  zkir.field @f1 : !zkir.felt
+
+  func.func public @constrain() { return }
+  func.func public @compute() { return }
+}
+
+zkir.struct @ComponentG {
+  zkir.field @f2 : !zkir.struct<@ComponentF>
+
+  func.func public @compute() {
+    %r = zkir.fref @f2[@f1] : !zkir.felt
+    return
+  }
+
+  func.func public @constrain() {
+    return
+  }
+}
+//CHECK-LABEL: zkir.struct @ComponentF {
+//CHECK-NEXT:    zkir.field @f1 : !zkir.felt
+//CHECK-NEXT:    func.func public @constrain() {
+//CHECK-NEXT:      return
+//CHECK-NEXT:    }
+//CHECK-NEXT:    func.func public @compute() {
+//CHECK-NEXT:      return
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }
+//CHECK-LABEL: zkir.struct @ComponentG {
+//CHECK-NEXT:    zkir.field @f2 : !zkir.struct<@ComponentF>
+//CHECK-NEXT:    func.func public @compute() {
+//CHECK-NEXT:      %0 = zkir.fref @f2[@f1] : !zkir.felt
+//CHECK-NEXT:      return
+//CHECK-NEXT:    }
+//CHECK-NEXT:    func.func public @constrain() {
+//CHECK-NEXT:      return
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }
+// -----
