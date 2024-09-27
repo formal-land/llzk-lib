@@ -134,3 +134,40 @@ zkir.struct @ComponentG {
 //CHECK-NEXT:    }
 //CHECK-NEXT:  }
 // -----
+
+zkir.struct @ComponentH {
+  func.func public @compute() { return }
+  func.func public @constrain(%a: !zkir.felt) { return }
+}
+
+zkir.struct @ComponentI {
+  zkir.field @f2 : !zkir.struct<@ComponentH>
+
+  func.func public @compute() {
+    return
+  }
+
+  func.func public @constrain() {
+    %b = zkir.felt.nondet
+    return
+  }
+}
+//CHECK-LABEL:  zkir.struct @ComponentH {
+//CHECK-NEXT:     func.func public @compute() {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:     func.func public @constrain(%arg0: !zkir.felt) {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:   }
+//CHECK-LABEL:  zkir.struct @ComponentI {
+//CHECK-NEXT:     zkir.field @f2 : !zkir.struct<@ComponentH>
+//CHECK-NEXT:     func.func public @compute() {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:     func.func public @constrain() {
+//CHECK-NEXT:       %felt_nondet = zkir.felt.nondet
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:   }
+// -----

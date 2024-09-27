@@ -124,6 +124,27 @@ def ZKIR_FeltConstantOp : ZKIR_Op<"felt.const", [
   let hasFolder = 1;
 }
 
+def ZKIR_FeltNonDetOp : ZKIR_Op<"felt.nondet", [
+  ConstantLike, Pure,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+]> {
+  let summary = "uninitialized field element";
+  let description = [{
+    The `zkir.felt.nondet` operation produces a felt-typed SSA value. This
+    can be used in `constrain()` functions in place of expressions that
+    cannot be included in constraints.
+
+    Example:
+
+    ```zkir
+    %0 = zkir.felt.nondet
+    ```
+  }];
+
+  let results = (outs ZKIR_FeltType:$result);
+  let assemblyFormat = "attr-dict";
+}
+
 def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
     Pure,

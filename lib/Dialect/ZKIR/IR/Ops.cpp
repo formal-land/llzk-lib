@@ -83,6 +83,15 @@ void FeltConstantOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
 
 mlir::OpFoldResult FeltConstantOp::fold(FeltConstantOp::FoldAdaptor) { return getValue(); }
 
+
+// -----
+// FeltNonDetOp
+// -----
+
+void FeltNonDetOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+  setNameFn(getResult(), "felt_nondet");
+}
+
 // -----
 // CreateArrayOp
 // -----
