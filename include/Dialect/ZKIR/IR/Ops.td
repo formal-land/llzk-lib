@@ -152,7 +152,7 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
                    "result", "elements", "::llvm::SmallVector<::mlir::Type, 2>("
                    "::llvm::cast<::zkir::ArrayType>($_self).getNumElements(), "
                    "::llvm::cast<::zkir::ArrayType>($_self).getElementType())">
-  ]> {
+]> {
   let summary = "creates an array";
   let description = [{
     This operation creates a new array with a given elements.
@@ -173,7 +173,7 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
 def ZKIR_EmitEqualityOp : ZKIR_Op<"emit.eq", [
     HasParent<"mlir::func::FuncOp">,
     Pure, Commutative
-  ]> {
+]> {
   let summary = "";
   let description = [{}];
 
@@ -191,7 +191,7 @@ def ZKIR_EmitContainmentOp : ZKIR_Op<"emit.in", [
     Pure,
     TypesMatchWith<"lhs type matches rhs element type", "rhs", "lhs", 
                    "::llvm::cast<::zkir::ArrayType>($_self).getElementType()">
-  ]> {
+]> {
   let summary = "";
   let description = [{}];
 
