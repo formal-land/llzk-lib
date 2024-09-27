@@ -29,7 +29,7 @@ def ZKIR_CmpPredicateAttr : ZKIR_EnumAttr<ZKIR_FeltCmpPredicate, "cmp_predicate"
   let assemblyFormat = [{ $value }];
 }
 
-def ZKIR_FeltConstAttr : ZKIR_Attr<"FeltConst", "feltconst", [TypedAttrInterface]> {
+def ZKIR_FeltConstAttr : ZKIR_Attr<"FeltConst", "felt.const", [TypedAttrInterface]> {
   let summary = "finite field element";
   let description = [{
     A felt attribute represents a finite field element.

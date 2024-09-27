@@ -1,7 +1,7 @@
 // RUN: zkir-opt %s -split-input-file -verify-diagnostics
 
 func.func private @constant_scalar_mismatch() {
-  %a = zkir.feltconst 6744573456376
+  %a = zkir.felt.const 6744573456376
   %b = index.constant 2 // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%b' expects different type than prior uses: '!zkir.felt' vs 'index'}}
   %r = zkir.new_array %a, %b : !zkir.array<2 x !zkir.felt>
@@ -61,8 +61,8 @@ func.func private @inner_array_type_mismatch_to_type_attr(
 // -----
 
 func.func private @mismatch_to_type_attr_size() {
-  %a = zkir.feltconst 6744573456376
-  %b = zkir.feltconst 381928390103509
+  %a = zkir.felt.const 6744573456376
+  %b = zkir.felt.const 381928390103509
   // expected-error@+1 {{custom op 'zkir.new_array' 2 operands present, but expected 3}}
   %r = zkir.new_array %a, %b : !zkir.array<3 x !zkir.felt>
 }

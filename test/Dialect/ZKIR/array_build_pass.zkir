@@ -51,14 +51,14 @@ func.func private @arr_arr_mix_index(%a: !zkir.array<3 x index>) -> !zkir.array<
 // -----
 
 func.func private @arr_constant_felt() -> !zkir.array<2 x !zkir.felt> {
-  %a = zkir.feltconst 6744573456376
-  %b = zkir.feltconst 381928390103509
+  %a = zkir.felt.const 6744573456376
+  %b = zkir.felt.const 381928390103509
   %r = zkir.new_array %a, %b : !zkir.array<2 x !zkir.felt>
   return %r: !zkir.array<2 x !zkir.felt>
 }
 //CHECK-LABEL:  func.func private @arr_constant_felt() -> !zkir.array<2 x !zkir.felt> {
-//CHECK-NEXT:     %[[T1:[0-9a-zA-Z_\.]+]] = zkir.feltconst  6744573456376
-//CHECK-NEXT:     %[[T2:[0-9a-zA-Z_\.]+]] = zkir.feltconst  381928390103509
+//CHECK-NEXT:     %[[T1:[0-9a-zA-Z_\.]+]] = zkir.felt.const  6744573456376
+//CHECK-NEXT:     %[[T2:[0-9a-zA-Z_\.]+]] = zkir.felt.const  381928390103509
 //CHECK-NEXT:     %[[T3:[0-9a-zA-Z_\.]+]] = zkir.new_array %[[T1]], %[[T2]] : <2 x !zkir.felt>
 //CHECK-NEXT:     return %[[T3]] : !zkir.array<2 x !zkir.felt>
 //CHECK-NEXT:   }

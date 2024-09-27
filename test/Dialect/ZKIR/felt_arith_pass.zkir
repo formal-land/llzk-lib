@@ -3,11 +3,11 @@
 // Field element basic arithmetic operations
 
 func.func private @f_constant() -> !zkir.felt {
-  %c = zkir.feltconst 42
+  %c = zkir.felt.const 42
   return %c: !zkir.felt
 }
 //CHECK-LABEL:  func.func private @f_constant() -> !zkir.felt {
-//CHECK-NEXT:     %[[T1:[0-9a-zA-Z_\.]+]] = zkir.feltconst  42
+//CHECK-NEXT:     %[[T1:[0-9a-zA-Z_\.]+]] = zkir.felt.const  42
 //CHECK-NEXT:     return %[[T1]] : !zkir.felt
 //CHECK-NEXT:   }
 // -----
