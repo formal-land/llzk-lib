@@ -9,7 +9,7 @@ zkir.struct @ComponentA {
     return
   }
 }
-//CHECK-LABEL:   zkir.struct @ComponentA {
+//CHECK-LABEL:  zkir.struct @ComponentA {
 //CHECK-NEXT:     func.func public @compute(%arg0: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
@@ -28,7 +28,7 @@ zkir.struct @ComponentB<[]> {
     return
   }
 }
-//CHECK-LABEL:   zkir.struct @ComponentB<[]> {
+//CHECK-LABEL:  zkir.struct @ComponentB<[]> {
 //CHECK-NEXT:     func.func public @compute(%arg0: index) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
@@ -42,7 +42,7 @@ zkir.struct @ComponentC<[@A]> {
   func.func public @constrain(%a: !zkir.felt, %b: !zkir.felt) { return }
   func.func public @compute(%a: !zkir.felt, %b: !zkir.felt) { return }
 }
-//CHECK-LABEL:   zkir.struct @ComponentC<[@A]> {
+//CHECK-LABEL:  zkir.struct @ComponentC<[@A]> {
 //CHECK-NEXT:     func.func public @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
@@ -61,7 +61,7 @@ zkir.struct @ComponentD<[@B, @D, @C]> {
     return
   }
 }
-//CHECK-LABEL:   zkir.struct @ComponentD<[@B, @D, @C]> {
+//CHECK-LABEL:  zkir.struct @ComponentD<[@B, @D, @C]> {
 //CHECK-NEXT:     func.func public @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
@@ -83,7 +83,7 @@ zkir.struct @ComponentE<[@B, @D, @C]> {
     return
   }
 }
-//CHECK-LABEL:   zkir.struct @ComponentE<[@B, @D, @C]> {
+//CHECK-LABEL:  zkir.struct @ComponentE<[@B, @D, @C]> {
 //CHECK-NEXT:     zkir.field @f1 : !zkir.felt
 //CHECK-NEXT:     zkir.field @f2 : [#zkir.modifier<pub>, #zkir.modifier<const>] !zkir.felt
 //CHECK-NEXT:     func.func public @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
