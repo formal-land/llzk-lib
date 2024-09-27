@@ -46,7 +46,7 @@ def ZKIR_StructType : ZKIR_Type<"Struct", "struct"> {
   }];
 }
 
-def ZKIR_ArrayType : ZKIR_Type<"Array", "array", []> {
+def ZKIR_ArrayType : ZKIR_Type<"Array", "array"> {
   let summary = "array type with a static size and homogeneous element type";
   let description = [{}];
 

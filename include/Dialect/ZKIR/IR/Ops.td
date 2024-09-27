@@ -94,6 +94,9 @@ def ZKIR_RefFieldOp : ZKIR_Op<"fref"> {
   let arguments = (ins SymbolNameAttr:$component, SymbolNameAttr:$field_name);
   let results = (outs AnyZKIRType:$field);
 
+  //TODO: could probably infer type($field) from $field_name using
+  //  TypesMatchWith or DeclareOpInterfaceMethods<InferTypeOpInterface>
+  //  but again, I probably would need the symbol table to lookup $field_name.
   let assemblyFormat = [{
     $component `[` $field_name `]` attr-dict `:` type($field)
   }];
@@ -157,7 +160,6 @@ class ZKIR_BinaryFeltOp<string mnemonic, list<Trait> traits = []>
   let results = (outs ZKIR_FeltType:$result);
   let assemblyFormat = "$lhs `,` $rhs attr-dict";
 }
-
 
 class ZKIR_UnaryFeltOp<string mnemonic, list<Trait> traits = []>
     : ZKIR_Op<mnemonic, traits # [SameOperandsAndResultType, Pure]> {
