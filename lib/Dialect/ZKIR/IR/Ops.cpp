@@ -69,6 +69,46 @@ mlir::LogicalResult StructDefOp::verifyRegions() {
   return mlir::success();
 }
 
+FieldDefOp StructDefOp::getFieldDef(::mlir::StringAttr fieldName) {
+  // The Body Region was verified to have exactly one Block so only need to search front() Block.
+  for (mlir::Operation &op : getBody().front()) {
+    if (FieldDefOp fieldDef = llvm::dyn_cast_if_present<FieldDefOp>(op)) {
+      if (fieldName.compare(fieldDef.getSymNameAttr()) == 0) {
+        return fieldDef;
+      }
+    }
+  }
+  return nullptr;
+}
+
+// -----
+// RefFieldOp
+// -----
+
+StructType RefFieldOp::getStructType() { return getComponent().getType().cast<StructType>(); }
+
+FieldDefOp RefFieldOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
+  return llvm::dyn_cast_if_present<FieldDefOp>(symbolTable.lookupSymbolIn(
+      getStructType().getDefinition(symbolTable, getOperation()),
+      mlir::SymbolRefAttr::get(getContext(), getFieldName())
+  ));
+}
+
+mlir::LogicalResult RefFieldOp::verifySymbolUses(::mlir::SymbolTableCollection &symbolTable) {
+  if (mlir::failed(getStructType().verifySymbol(symbolTable, getOperation()))) {
+    return mlir::failure();
+  }
+  FieldDefOp field = getFieldDefOp(symbolTable);
+  if (!field) {
+    return emitOpError() << "undefined struct field: @" << getFieldName();
+  }
+  if (field.getType() != getResult().getType()) {
+    return emitOpError() << "field ref has wrong type; expected " << field.getType() << ", got "
+                         << getResult().getType();
+  }
+  return mlir::success();
+}
+
 // -----
 // FeltConstantOp
 // -----
@@ -117,8 +157,8 @@ inline mlir::LogicalResult verifyEmitOp(Operation *op) {
 
 } // namespace
 
-mlir::LogicalResult EmitEqualityOp::verify() { return verifyEmitOp(this->getOperation()); }
+mlir::LogicalResult EmitEqualityOp::verify() { return verifyEmitOp(getOperation()); }
 
-mlir::LogicalResult EmitContainmentOp::verify() { return verifyEmitOp(this->getOperation()); }
+mlir::LogicalResult EmitContainmentOp::verify() { return verifyEmitOp(getOperation()); }
 
 } // namespace zkir

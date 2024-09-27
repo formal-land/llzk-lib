@@ -12,7 +12,7 @@ template <typename T, typename NameT>
 inline T lookupTopLevelSymbol(
     mlir::SymbolTableCollection &symbolTable, mlir::Operation *op, NameT &&symbol
 ) {
-  return llvm::dyn_cast_or_null<T>(
+  return llvm::dyn_cast_if_present<T>(
       symbolTable.lookupSymbolIn(getModule(op), std::forward<NameT>(symbol))
   );
 }

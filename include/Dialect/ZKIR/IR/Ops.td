@@ -56,6 +56,12 @@ def ZKIR_StructDefOp : ZKIR_Op<"struct", [
     $sym_name (`<` $const_params^ `>`)? $body attr-dict
   }];
 
+  let extraClassDeclaration = [{
+    /// Gets the FieldDefOp that defines the field in this
+    /// structure with the given name, if present.
+    FieldDefOp getFieldDef(::mlir::StringAttr fieldName);
+  }];
+
   let hasRegionVerifier = 1;
 }
 
@@ -82,23 +88,27 @@ def ZKIR_FieldDefOp : ZKIR_Op<"field", [HasParent<"StructDefOp">, Symbol]> {
   }];
 }
 
-def ZKIR_RefFieldOp : ZKIR_Op<"fref"> {
+def ZKIR_RefFieldOp : ZKIR_Op<"fref", [
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>
+]> {
   let summary = "Reference a struct/component field.";
   let description = [{
     This operation references a named field from a struct/component.
   }];
 
-  //TODO: I think $component should be "TypedStrAttr<ZKIR_StructType>" but 
-  //  that gives "invalid kind of attribute specified" and maybe requires some
-  //  other work on the symbol table or type system.
-  let arguments = (ins SymbolNameAttr:$component, SymbolNameAttr:$field_name);
+  let arguments = (ins ZKIR_StructType:$component, FlatSymbolRefAttr:$field_name);
   let results = (outs AnyZKIRType:$field);
 
-  //TODO: could probably infer type($field) from $field_name using
-  //  TypesMatchWith or DeclareOpInterfaceMethods<InferTypeOpInterface>
-  //  but again, I probably would need the symbol table to lookup $field_name.
   let assemblyFormat = [{
-    $component `[` $field_name `]` attr-dict `:` type($field)
+    $component `[` $field_name `]` attr-dict `:` type($component) `->` type($field)
+  }];
+
+  let extraClassDeclaration = [{
+    /// Gets the struct type.
+    StructType getStructType();
+
+    /// Gets the `field` definition for the field referenced in this op.
+    FieldDefOp getFieldDefOp(mlir::SymbolTableCollection &symbolTable);
   }];
 }
 
