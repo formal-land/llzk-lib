@@ -10,6 +10,11 @@
 #define GET_OP_CLASSES
 #include "Dialect/ZKIR/IR/Ops.cpp.inc"
 
+namespace zkir {
+
+// -----
+// StructDefOp
+// -----
 namespace {
 
 using namespace mlir;
@@ -20,12 +25,6 @@ msgOneFunction(function_ref<InFlightDiagnostic()> emitError, const Twine &name) 
 }
 
 } // namespace
-
-namespace zkir {
-
-// -----
-// StructDefOp
-// -----
 
 mlir::LogicalResult StructDefOp::verifyRegions() {
   if (!getBody().hasOneBlock()) {
@@ -91,5 +90,27 @@ mlir::OpFoldResult FeltConstantOp::fold(FeltConstantOp::FoldAdaptor) { return ge
 void CreateArrayOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
   setNameFn(getResult(), "array");
 }
+
+// -----
+// Emit*Op
+// -----
+
+namespace {
+
+inline mlir::LogicalResult verifyEmitOp(Operation *op) {
+  // No need for dyn_cast due to HasParent<"mlir::func::FuncOp"> trait
+  auto func_name = llvm::cast<mlir::func::FuncOp>(op->getParentOp()).getSymName();
+  if ("constrain" == func_name) {
+    return mlir::success();
+  } else {
+    return op->emitOpError() << "'emit' operation is only allowed within 'constrain' functions.";
+  }
+}
+
+} // namespace
+
+mlir::LogicalResult EmitEqualityOp::verify() { return verifyEmitOp(this->getOperation()); }
+
+mlir::LogicalResult EmitContainmentOp::verify() { return verifyEmitOp(this->getOperation()); }
 
 } // namespace zkir

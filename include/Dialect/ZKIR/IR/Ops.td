@@ -149,6 +149,43 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
   let assemblyFormat = "$elements attr-dict `:` type($result)";
 }
 
+def ZKIR_EmitEqualityOp : ZKIR_Op<"emit.eq", [
+    HasParent<"mlir::func::FuncOp">,
+    Pure, Commutative
+  ]> {
+  let summary = "";
+  let description = [{}];
+
+  let arguments = (ins ZKIR_FeltType:$lhs, ZKIR_FeltType:$rhs);
+
+  let assemblyFormat = [{
+    $lhs `,` $rhs attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
+def ZKIR_EmitContainmentOp : ZKIR_Op<"emit.in", [
+    HasParent<"mlir::func::FuncOp">,
+    Pure,
+    TypesMatchWith<"lhs type matches rhs element type", "rhs", "lhs", 
+                   "::llvm::cast<::zkir::ArrayType>($_self).getElementType()">
+  ]> {
+  let summary = "";
+  let description = [{}];
+
+  let arguments = (ins AnyZKIRType:$lhs, ZKIR_ArrayType:$rhs);
+
+  // TODO: would like to avoid specifying either type here.
+  //  I can get away without LHS b/c of the TypesMatchWith above.
+  //  ArrayType is not Buildable so I can't directly avoid writing it here.
+  let assemblyFormat = [{
+    $lhs `,` $rhs `:` type($rhs) attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
 // -----
 // Field element operators
 // -----

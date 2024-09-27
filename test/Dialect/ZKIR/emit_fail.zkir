@@ -1,0 +1,170 @@
+// RUN: zkir-opt -split-input-file -verify-diagnostics %s
+
+// Test: [emit.in] type annotation does not match type of parameter 2 in size
+zkir.struct @TestComponent01 {
+  func.func public @constrain(
+        %a: !zkir.felt,
+        %b: !zkir.array<5 x !zkir.felt> // expected-note {{prior use here}}
+        ) {
+    // expected-error@+1 {{use of value '%b' expects different type than prior uses: '!zkir.array<6 x !zkir.felt>' vs '!zkir.array<5 x !zkir.felt>'}}
+    zkir.emit.in %a, %b : !zkir.array<6 x !zkir.felt>
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit.in] type annotation does not match type of parameter 2 in element type
+zkir.struct @TestComponent02 {
+  func.func public @constrain(
+        %a: index,
+        %b: !zkir.array<5 x !zkir.felt> // expected-note {{prior use here}}
+        ) {
+    // expected-error@+1 {{use of value '%b' expects different type than prior uses: '!zkir.array<5 x index>' vs '!zkir.array<5 x !zkir.felt>'}}
+    zkir.emit.in %a, %b : !zkir.array<5 x index>
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit.in] type of parameter 1 does not match array element type of annotation
+zkir.struct @TestComponent03 {
+  func.func public @constrain(
+        %a: index, // expected-note {{prior use here}}
+        %b: !zkir.array<5 x !zkir.felt>
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.felt' vs 'index'}}
+    zkir.emit.in %a, %b : !zkir.array<5 x !zkir.felt>
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit.in] type annotation is not an array type
+zkir.struct @TestComponent04 {
+  func.func public @constrain(%a: !zkir.felt, %b: !zkir.felt) {
+    // expected-error@+1 {{custom op 'zkir.emit.in' invalid kind of Type specified}}
+    zkir.emit.in %a, %b : !zkir.felt
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit.in] type of parameter 2 is not an array
+zkir.struct @TestComponent05 {
+  func.func public @constrain(
+        %a: !zkir.felt,
+        %b: !zkir.felt  // expected-note {{prior use here}}
+        ) {
+    // expected-error@+1 {{use of value '%b' expects different type than prior uses: '!zkir.array<5 x !zkir.felt>' vs '!zkir.felt'}}
+    zkir.emit.in %a, %b : !zkir.array<5 x !zkir.felt>
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit.in] type of parameter 1 does not match array element type of parameter 2
+zkir.struct @TestComponent06 {
+  func.func public @constrain(
+        %a: index, // expected-note {{prior use here}}
+        %b: !zkir.array<5 x !zkir.felt>
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.felt' vs 'index'}}
+    zkir.emit.in %a, %b : !zkir.array<5 x !zkir.felt>
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit.eq] lhs has invalid type
+zkir.struct @TestComponent07 {
+  func.func public @constrain(
+        %a: index, // expected-note {{prior use here}}
+        %b: !zkir.felt
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.felt' vs 'index'}}
+    zkir.emit.eq %a, %b
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit.eq] rhs has invalid type
+zkir.struct @TestComponent08 {
+  func.func public @constrain(
+        %a: index, // expected-note {{prior use here}}
+        %b: !zkir.felt
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.felt' vs 'index'}}
+    zkir.emit.eq %b, %a
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit.eq] both sides have invalid (although the same) type
+zkir.struct @TestComponent09 {
+  func.func public @constrain(
+        %a: index, // expected-note {{prior use here}}
+        %b: index
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.felt' vs 'index'}}
+    zkir.emit.eq %a, %b
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit.eq] outside of a function body
+module {
+    %a = zkir.feltconst 7653
+    %b = zkir.feltconst 34572
+    // expected-error@+1 {{'zkir.emit.eq' op expects parent op 'func.func'}}
+    zkir.emit.eq %a, %b
+}
+// -----
+
+// Test: [emit.in] outside of a function body
+module {
+    %a = index.constant 433
+    %b = index.constant 535
+    %z = zkir.new_array %a, %b: !zkir.array<2 x index>
+    // expected-error@+1 {{'zkir.emit.in' op expects parent op 'func.func'}}
+    zkir.emit.in %a, %z : !zkir.array<2 x index>
+}
+// -----
