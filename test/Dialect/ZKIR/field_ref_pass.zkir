@@ -1,0 +1,107 @@
+// RUN: zkir-opt -split-input-file %s 2>&1 | FileCheck %s
+
+zkir.struct @ComponentF1 {
+  zkir.field @f1 : !zkir.felt
+
+  func.func public @constrain() { return }
+  func.func public @compute() { return }
+}
+
+zkir.struct @ComponentF2 {
+  func.func public @compute(%p: !zkir.struct<@ComponentF1>) {
+    %r = zkir.fref %p[@f1] : !zkir.struct<@ComponentF1> -> !zkir.felt
+    return
+  }
+
+  func.func public @constrain(%p: !zkir.struct<@ComponentF1>) {
+    return
+  }
+}
+//CHECK-LABEL: zkir.struct @ComponentF1 {
+//CHECK-NEXT:    zkir.field @f1 : !zkir.felt
+//CHECK-NEXT:    func.func public @constrain() {
+//CHECK-NEXT:      return
+//CHECK-NEXT:    }
+//CHECK-NEXT:    func.func public @compute() {
+//CHECK-NEXT:      return
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }
+//CHECK-LABEL: zkir.struct @ComponentF2 {
+//CHECK-NEXT:    func.func public @compute(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentF1>) {
+//CHECK-NEXT:      %[[T0:[0-9a-zA-Z_\.]+]] = zkir.fref %[[A0]][@f1] : <@ComponentF1> -> !zkir.felt
+//CHECK-NEXT:      return
+//CHECK-NEXT:    }
+//CHECK-NEXT:    func.func public @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentF1>) {
+//CHECK-NEXT:      return
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }
+// -----
+
+zkir.struct @ComponentH1 {
+  zkir.field @f1 : !zkir.felt
+
+  func.func public @compute() { return }
+  func.func public @constrain() { return }
+}
+
+zkir.struct @ComponentH2 {
+  zkir.field @f2 : !zkir.struct<@ComponentH1>
+
+  func.func public @compute() {
+    return
+  }
+
+  func.func public @constrain(%p: !zkir.struct<@ComponentH2>) {
+    %q = zkir.fref %p[@f2] : !zkir.struct<@ComponentH2> -> !zkir.struct<@ComponentH1>
+    %r = zkir.fref %q[@f1] : !zkir.struct<@ComponentH1> -> !zkir.felt
+    return
+  }
+}
+//CHECK-LABEL:  zkir.struct @ComponentH1 {
+//CHECK-NEXT:     zkir.field @f1 : !zkir.felt
+//CHECK-NEXT:     func.func public @compute() {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:     func.func public @constrain() {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:   }
+//CHECK-LABEL:  zkir.struct @ComponentH2 {
+//CHECK-NEXT:     zkir.field @f2 : !zkir.struct<@ComponentH1>
+//CHECK-NEXT:     func.func public @compute() {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:     func.func public @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentH2>) {
+//CHECK-NEXT:       %[[T1:[0-9a-zA-Z_\.]+]] = zkir.fref %[[A0]][@f2] : <@ComponentH2> -> !zkir.struct<@ComponentH1>
+//CHECK-NEXT:       %[[T2:[0-9a-zA-Z_\.]+]] = zkir.fref %[[T1]][@f1] : <@ComponentH1> -> !zkir.felt
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:   }
+// -----
+
+// zkir.struct @ComponentJ1 {
+//   zkir.field @f1 : !zkir.felt
+//
+//   func.func public @compute(%self: !zkir.struct<@ComponentJ1>, %p: !zkir.felt) { return }
+//   func.func public @constrain(%self: !zkir.struct<@ComponentJ1>, %p: !zkir.felt) { return }
+// }
+//
+// zkir.struct @ComponentJ2 {
+//   zkir.field @f2 : !zkir.felt
+//   zkir.field @f3 : !zkir.struct<@ComponentJ1>
+//
+//   func.func public @compute(%self: !zkir.struct<@ComponentJ2>) {
+//     return
+//   }
+//
+//   func.func public @constrain(%self: !zkir.struct<@ComponentJ2>) {
+//     %a = zkir.fref %self[@f2] : !zkir.struct<@ComponentJ2> -> !zkir.felt
+//     %b = zkir.fref %self[@f3] : !zkir.struct<@ComponentJ2> -> !zkir.struct<@ComponentJ1>
+//     //TODO: It's type checking against @constrain on the current struct and that's not we need!
+//     // prefix with @ComponentJ1:: does not help.
+//     //TODO: compute functions actually need "::" syntax or something too.
+//     //I think this is reason to override the 'func' dialect.
+//     func.call @ComponentJ1::@constrain(%b, %a) : (!zkir.struct<@ComponentJ1>, !zkir.felt) -> none
+//     return
+//   }
+// }
