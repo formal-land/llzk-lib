@@ -39,8 +39,6 @@ def ZKIR_FeltConstAttr : ZKIR_Attr<"FeltConst", "felt.const", [TypedAttrInterfac
 
   let assemblyFormat = [{ custom<APInt>($value) }];
 
-  // let genVerifyDecl = 1;
-
   let extraClassDeclaration = [{
     ::mlir::Type getType() const;
   }];
