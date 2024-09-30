@@ -168,3 +168,17 @@ module {
     zkir.emit.in %a, %z : !zkir.array<2 x index>
 }
 // -----
+
+// Test: [emit.eq] outside of a function body
+zkir.struct @Component10 {
+  func.func public @constrain(%a: !zkir.felt, %b: !zkir.array<5 x !zkir.felt>) {
+    // expected-error@+1 {{cannot name an operation with no results}}
+    %c = zkir.emit.in %a, %b : !zkir.array<5 x !zkir.felt>
+    return
+  }
+
+  func.func public @compute() {
+    return
+  }
+}
+// -----

@@ -82,19 +82,30 @@ FieldDefOp StructDefOp::getFieldDef(::mlir::StringAttr fieldName) {
 }
 
 // -----
-// RefFieldOp
+// FieldRefOp implementations
 // -----
 
-StructType RefFieldOp::getStructType() { return getComponent().getType().cast<StructType>(); }
-
-FieldDefOp RefFieldOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
-  return llvm::dyn_cast_if_present<FieldDefOp>(symbolTable.lookupSymbolIn(
-      getStructType().getDefinition(symbolTable, getOperation()),
-      mlir::SymbolRefAttr::get(getContext(), getFieldName())
-  ));
+namespace {
+template <class T> zkir::StructType getStructType(T refOp) {
+  return refOp->getComponent().getType().template cast<zkir::StructType>();
 }
 
-mlir::LogicalResult RefFieldOp::verifySymbolUses(::mlir::SymbolTableCollection &symbolTable) {
+template <class T>
+zkir::FieldDefOp getFieldDefOp(T refOp, mlir::SymbolTableCollection &symbolTable) {
+  return llvm::dyn_cast_if_present<FieldDefOp>(symbolTable.lookupSymbolIn(
+      refOp->getStructType().getDefinition(symbolTable, refOp->getOperation()),
+      mlir::SymbolRefAttr::get(refOp->getContext(), refOp->getFieldName())
+  ));
+}
+} // namespace
+
+StructType FieldReadOp::getStructType() { return zkir::getStructType(this); }
+
+FieldDefOp FieldReadOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
+  return zkir::getFieldDefOp(this, symbolTable);
+}
+
+mlir::LogicalResult FieldReadOp::verifySymbolUses(::mlir::SymbolTableCollection &symbolTable) {
   if (mlir::failed(getStructType().verifySymbol(symbolTable, getOperation()))) {
     return mlir::failure();
   }
@@ -103,8 +114,29 @@ mlir::LogicalResult RefFieldOp::verifySymbolUses(::mlir::SymbolTableCollection &
     return emitOpError() << "undefined struct field: @" << getFieldName();
   }
   if (field.getType() != getResult().getType()) {
-    return emitOpError() << "field ref has wrong type; expected " << field.getType() << ", got "
+    return emitOpError() << "field read has wrong type; expected " << field.getType() << ", got "
                          << getResult().getType();
+  }
+  return mlir::success();
+}
+
+StructType FieldWriteOp::getStructType() { return zkir::getStructType(this); }
+
+FieldDefOp FieldWriteOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
+  return zkir::getFieldDefOp(this, symbolTable);
+}
+
+mlir::LogicalResult FieldWriteOp::verifySymbolUses(::mlir::SymbolTableCollection &symbolTable) {
+  if (mlir::failed(getStructType().verifySymbol(symbolTable, getOperation()))) {
+    return mlir::failure();
+  }
+  FieldDefOp field = getFieldDefOp(symbolTable);
+  if (!field) {
+    return emitOpError() << "undefined struct field: @" << getFieldName();
+  }
+  if (field.getType() != getVal().getType()) {
+    return emitOpError() << "field write has wrong type; expected " << field.getType() << ", got "
+                         << getVal().getType();
   }
   return mlir::success();
 }

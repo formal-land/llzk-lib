@@ -131,3 +131,36 @@ zkir.struct @ComponentG2 {
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
+
+
+
+
+
+
+
+// zkir.struct @ComponentH1 {
+//   zkir.field @f1 : !zkir.felt
+//
+//   func.func public @compute(%self: !zkir.struct<@ComponentH1>, %p: !zkir.felt) { return }
+//   func.func public @constrain(%self: !zkir.struct<@ComponentH1>, %p: !zkir.felt) { return }
+// }
+//
+// zkir.struct @ComponentH2 {
+//   zkir.field @f2 : !zkir.felt
+//   zkir.field @f3 : !zkir.struct<@ComponentH1>
+//
+//   func.func public @compute(%self: !zkir.struct<@ComponentH2>) {
+//     return
+//   }
+//
+//   func.func public @constrain(%self: !zkir.struct<@ComponentH2>) {
+//     %a = zkir.field.read %self[@f2] : !zkir.struct<@ComponentH2>, !zkir.felt
+//     %b = zkir.field.read %self[@f3] : !zkir.struct<@ComponentH2>, !zkir.struct<@ComponentH1>
+//     //TODO: It's type checking against @constrain on the current struct and that's not we need!
+//     // prefix with @ComponentH1:: does not help.
+//     //TODO: compute functions actually need "::" syntax or something too.
+//     //I think this is reason to override the 'func' dialect.
+//     func.call @ComponentH1::@constrain(%b, %a) : (!zkir.struct<@ComponentH1>, !zkir.felt), none
+//     return
+//   }
+// }

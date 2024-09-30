@@ -88,27 +88,41 @@ def ZKIR_FieldDefOp : ZKIR_Op<"field", [HasParent<"StructDefOp">, Symbol]> {
   }];
 }
 
-def ZKIR_RefFieldOp : ZKIR_Op<"fref", [
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>
-]> {
-  let summary = "Reference a struct/component field.";
-  let description = [{
-    This operation references a named field from a struct/component.
-  }];
-
-  let arguments = (ins ZKIR_StructType:$component, FlatSymbolRefAttr:$field_name);
-  let results = (outs AnyZKIRType:$field);
-
-  let assemblyFormat = [{
-    $component `[` $field_name `]` attr-dict `:` type($component) `->` type($field)
-  }];
-
+class ZKIR_FieldRefOp<string mnemonic, list<Trait> traits = []>
+    : ZKIR_Op<mnemonic, traits # [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let extraClassDeclaration = [{
     /// Gets the struct type.
     StructType getStructType();
 
     /// Gets the `field` definition for the field referenced in this op.
     FieldDefOp getFieldDefOp(mlir::SymbolTableCollection &symbolTable);
+  }];
+}
+
+def ZKIR_FieldReadOp : ZKIR_FieldRefOp<"field.read"> {
+  let summary = "Read value from a struct/component field.";
+  let description = [{
+    This operation reads the value from the named field from a struct/component.
+  }];
+
+  let arguments = (ins ZKIR_StructType:$component, FlatSymbolRefAttr:$field_name);
+  let results = (outs AnyZKIRType:$val);
+
+  let assemblyFormat = [{
+    $component `[` $field_name `]` attr-dict `:` type($component) `,` type($val)
+  }];
+}
+
+def ZKIR_FieldWriteOp : ZKIR_FieldRefOp<"field.write"> {
+  let summary = "Write value to a struct/component field.";
+  let description = [{
+    This operation writes the value to the named field from a struct/component.
+  }];
+
+  let arguments = (ins ZKIR_StructType:$component, FlatSymbolRefAttr:$field_name, AnyZKIRType:$val);
+
+  let assemblyFormat = [{
+    $component `[` $field_name `]` `=` $val attr-dict `:` type($component) `,` type($val)
   }];
 }
 
