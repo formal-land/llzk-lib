@@ -1,71 +1,71 @@
 // RUN: zkir-opt -split-input-file %s 2>&1 | FileCheck %s
 
 zkir.struct @ComponentA {
-  func.func public @compute(%a: !zkir.felt) {
+  func.func @compute(%a: !zkir.felt) {
     return
   }
 
-  func.func public @constrain(%a: !zkir.felt) {
+  func.func @constrain(%a: !zkir.felt) {
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentA {
-//CHECK-NEXT:     func.func public @compute(%arg0: !zkir.felt) {
+//CHECK-NEXT:     func.func @compute(%arg0: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func public @constrain(%arg0: !zkir.felt) {
+//CHECK-NEXT:     func.func @constrain(%arg0: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
 
 zkir.struct @ComponentB<[]> {
-  func.func public @compute(%a: index) {
+  func.func @compute(%a: index) {
     return
   }
 
-  func.func public @constrain(%a: index) {
+  func.func @constrain(%a: index) {
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentB<[]> {
-//CHECK-NEXT:     func.func public @compute(%arg0: index) {
+//CHECK-NEXT:     func.func @compute(%arg0: index) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func public @constrain(%arg0: index) {
+//CHECK-NEXT:     func.func @constrain(%arg0: index) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
 
 zkir.struct @ComponentC<[@A]> {
-  func.func public @constrain(%a: !zkir.felt, %b: !zkir.felt) { return }
-  func.func public @compute(%a: !zkir.felt, %b: !zkir.felt) { return }
+  func.func @constrain(%a: !zkir.felt, %b: !zkir.felt) { return }
+  func.func @compute(%a: !zkir.felt, %b: !zkir.felt) { return }
 }
 //CHECK-LABEL:  zkir.struct @ComponentC<[@A]> {
-//CHECK-NEXT:     func.func public @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func.func @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func public @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func.func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
 
 zkir.struct @ComponentD<[@B, @D, @C]> {
-  func.func public @constrain(%a: !zkir.felt, %b: !zkir.felt) {
+  func.func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
     return
   }
 
-  func.func public @compute(%a: !zkir.felt, %b: !zkir.felt) {
+  func.func @compute(%a: !zkir.felt, %b: !zkir.felt) {
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentD<[@B, @D, @C]> {
-//CHECK-NEXT:     func.func public @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func.func @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func public @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func.func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
@@ -75,57 +75,57 @@ zkir.struct @ComponentE<[@B, @D, @C]> {
   zkir.field @f1 : !zkir.felt
   zkir.field @f2 : [#zkir.modifier<pub>, #zkir.modifier<const>] !zkir.felt
 
-  func.func public @compute(%a: !zkir.felt, %b: !zkir.felt) {
+  func.func @compute(%a: !zkir.felt, %b: !zkir.felt) {
     return
   }
 
-  func.func public @constrain(%a: !zkir.felt, %b: !zkir.felt) {
+  func.func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentE<[@B, @D, @C]> {
 //CHECK-NEXT:     zkir.field @f1 : !zkir.felt
 //CHECK-NEXT:     zkir.field @f2 : [#zkir.modifier<pub>, #zkir.modifier<const>] !zkir.felt
-//CHECK-NEXT:     func.func public @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func.func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func public @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func.func @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
 
 zkir.struct @ComponentG1 {
-  func.func public @compute() { return }
-  func.func public @constrain(%a: !zkir.felt) { return }
+  func.func @compute() { return }
+  func.func @constrain(%a: !zkir.felt) { return }
 }
 
 zkir.struct @ComponentG2 {
   zkir.field @f2 : !zkir.struct<@ComponentG1>
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 
-  func.func public @constrain() {
+  func.func @constrain() {
     %b = zkir.felt.nondet
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentG1 {
-//CHECK-NEXT:     func.func public @compute() {
+//CHECK-NEXT:     func.func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func public @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
+//CHECK-NEXT:     func.func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 //CHECK-LABEL:  zkir.struct @ComponentG2 {
 //CHECK-NEXT:     zkir.field @f2 : !zkir.struct<@ComponentG1>
-//CHECK-NEXT:     func.func public @compute() {
+//CHECK-NEXT:     func.func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func public @constrain() {
+//CHECK-NEXT:     func.func @constrain() {
 //CHECK-NEXT:       %felt_nondet = zkir.felt.nondet
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
@@ -141,19 +141,19 @@ zkir.struct @ComponentG2 {
 // zkir.struct @ComponentH1 {
 //   zkir.field @f1 : !zkir.felt
 //
-//   func.func public @compute(%self: !zkir.struct<@ComponentH1>, %p: !zkir.felt) { return }
-//   func.func public @constrain(%self: !zkir.struct<@ComponentH1>, %p: !zkir.felt) { return }
+//   func.func @compute(%self: !zkir.struct<@ComponentH1>, %p: !zkir.felt) { return }
+//   func.func @constrain(%self: !zkir.struct<@ComponentH1>, %p: !zkir.felt) { return }
 // }
 //
 // zkir.struct @ComponentH2 {
 //   zkir.field @f2 : !zkir.felt
 //   zkir.field @f3 : !zkir.struct<@ComponentH1>
 //
-//   func.func public @compute(%self: !zkir.struct<@ComponentH2>) {
+//   func.func @compute(%self: !zkir.struct<@ComponentH2>) {
 //     return
 //   }
 //
-//   func.func public @constrain(%self: !zkir.struct<@ComponentH2>) {
+//   func.func @constrain(%self: !zkir.struct<@ComponentH2>) {
 //     %a = zkir.field.read %self[@f2] : !zkir.struct<@ComponentH2>, !zkir.felt
 //     %b = zkir.field.read %self[@f3] : !zkir.struct<@ComponentH2>, !zkir.struct<@ComponentH1>
 //     //TODO: It's type checking against @constrain on the current struct and that's not we need!

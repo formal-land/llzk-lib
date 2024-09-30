@@ -2,7 +2,7 @@
 
 // Test: [emit.in] type annotation does not match type of parameter 2 in size
 zkir.struct @TestComponent01 {
-  func.func public @constrain(
+  func.func @constrain(
         %a: !zkir.felt,
         %b: !zkir.array<5 x !zkir.felt> // expected-note {{prior use here}}
         ) {
@@ -11,7 +11,7 @@ zkir.struct @TestComponent01 {
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
@@ -19,7 +19,7 @@ zkir.struct @TestComponent01 {
 
 // Test: [emit.in] type annotation does not match type of parameter 2 in element type
 zkir.struct @TestComponent02 {
-  func.func public @constrain(
+  func.func @constrain(
         %a: index,
         %b: !zkir.array<5 x !zkir.felt> // expected-note {{prior use here}}
         ) {
@@ -28,7 +28,7 @@ zkir.struct @TestComponent02 {
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
@@ -36,7 +36,7 @@ zkir.struct @TestComponent02 {
 
 // Test: [emit.in] type of parameter 1 does not match array element type of annotation
 zkir.struct @TestComponent03 {
-  func.func public @constrain(
+  func.func @constrain(
         %a: index, // expected-note {{prior use here}}
         %b: !zkir.array<5 x !zkir.felt>
         ) {
@@ -45,7 +45,7 @@ zkir.struct @TestComponent03 {
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
@@ -53,13 +53,13 @@ zkir.struct @TestComponent03 {
 
 // Test: [emit.in] type annotation is not an array type
 zkir.struct @TestComponent04 {
-  func.func public @constrain(%a: !zkir.felt, %b: !zkir.felt) {
+  func.func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
     // expected-error@+1 {{custom op 'zkir.emit.in' invalid kind of Type specified}}
     zkir.emit.in %a, %b : !zkir.felt
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
@@ -67,7 +67,7 @@ zkir.struct @TestComponent04 {
 
 // Test: [emit.in] type of parameter 2 is not an array
 zkir.struct @TestComponent05 {
-  func.func public @constrain(
+  func.func @constrain(
         %a: !zkir.felt,
         %b: !zkir.felt  // expected-note {{prior use here}}
         ) {
@@ -76,7 +76,7 @@ zkir.struct @TestComponent05 {
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
@@ -84,7 +84,7 @@ zkir.struct @TestComponent05 {
 
 // Test: [emit.in] type of parameter 1 does not match array element type of parameter 2
 zkir.struct @TestComponent06 {
-  func.func public @constrain(
+  func.func @constrain(
         %a: index, // expected-note {{prior use here}}
         %b: !zkir.array<5 x !zkir.felt>
         ) {
@@ -93,7 +93,7 @@ zkir.struct @TestComponent06 {
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
@@ -101,7 +101,7 @@ zkir.struct @TestComponent06 {
 
 // Test: [emit.eq] lhs has invalid type
 zkir.struct @TestComponent07 {
-  func.func public @constrain(
+  func.func @constrain(
         %a: index, // expected-note {{prior use here}}
         %b: !zkir.felt
         ) {
@@ -110,7 +110,7 @@ zkir.struct @TestComponent07 {
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
@@ -118,7 +118,7 @@ zkir.struct @TestComponent07 {
 
 // Test: [emit.eq] rhs has invalid type
 zkir.struct @TestComponent08 {
-  func.func public @constrain(
+  func.func @constrain(
         %a: index, // expected-note {{prior use here}}
         %b: !zkir.felt
         ) {
@@ -127,7 +127,7 @@ zkir.struct @TestComponent08 {
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
@@ -135,7 +135,7 @@ zkir.struct @TestComponent08 {
 
 // Test: [emit.eq] both sides have invalid (although the same) type
 zkir.struct @TestComponent09 {
-  func.func public @constrain(
+  func.func @constrain(
         %a: index, // expected-note {{prior use here}}
         %b: index
         ) {
@@ -144,7 +144,7 @@ zkir.struct @TestComponent09 {
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
@@ -171,13 +171,13 @@ module {
 
 // Test: [emit.eq] outside of a function body
 zkir.struct @Component10 {
-  func.func public @constrain(%a: !zkir.felt, %b: !zkir.array<5 x !zkir.felt>) {
+  func.func @constrain(%a: !zkir.felt, %b: !zkir.array<5 x !zkir.felt>) {
     // expected-error@+1 {{cannot name an operation with no results}}
     %c = zkir.emit.in %a, %b : !zkir.array<5 x !zkir.felt>
     return
   }
 
-  func.func public @compute() {
+  func.func @compute() {
     return
   }
 }
