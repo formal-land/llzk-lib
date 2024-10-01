@@ -14,8 +14,8 @@ def ZKIRDialect : Dialect {
   let cppNamespace = "zkir";
 
   let dependentDialects = [
-    "mlir::index::IndexDialect",
-    "mlir::func::FuncDialect"
+    "::mlir::index::IndexDialect",
+    "::mlir::func::FuncDialect"
   ];
 
   let useDefaultTypePrinterParser = true;

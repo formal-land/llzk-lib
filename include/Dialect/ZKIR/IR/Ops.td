@@ -20,7 +20,7 @@ class ZKIR_Op<string mnemonic, list<Trait> traits = []>
 // -----
 
 def ZKIR_StructDefOp : ZKIR_Op<"struct", [
-  HasParent<"mlir::ModuleOp">,
+  HasParent<"::mlir::ModuleOp">,
   Symbol,
   SymbolTable,
   IsolatedFromAbove,
@@ -95,7 +95,7 @@ class ZKIR_FieldRefOp<string mnemonic, list<Trait> traits = []>
     StructType getStructType();
 
     /// Gets the `field` definition for the field referenced in this op.
-    FieldDefOp getFieldDefOp(mlir::SymbolTableCollection &symbolTable);
+    FieldDefOp getFieldDefOp(::mlir::SymbolTableCollection &symbolTable);
   }];
 }
 
@@ -195,7 +195,7 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
 }
 
 def ZKIR_EmitEqualityOp : ZKIR_Op<"emit.eq", [
-    HasParent<"mlir::func::FuncOp">,
+    HasParent<"::mlir::func::FuncOp">,
     Pure, Commutative
 ]> {
   let summary = "";
@@ -211,7 +211,7 @@ def ZKIR_EmitEqualityOp : ZKIR_Op<"emit.eq", [
 }
 
 def ZKIR_EmitContainmentOp : ZKIR_Op<"emit.in", [
-    HasParent<"mlir::func::FuncOp">,
+    HasParent<"::mlir::func::FuncOp">,
     Pure,
     TypesMatchWith<"lhs type matches rhs element type", "rhs", "lhs", 
                    "::llvm::cast<::zkir::ArrayType>($_self).getElementType()">

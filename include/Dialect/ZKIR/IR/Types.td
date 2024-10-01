@@ -28,7 +28,7 @@ def ZKIR_FeltType : ZKIR_Type<"Felt", "felt"> {
 def ZKIR_StructType : ZKIR_Type<"Struct", "struct"> {
   let summary = "circuit component type";
   let description = [{}];
-  let parameters = (ins "::mlir::SymbolRefAttr":$name);
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$name);
 
   let assemblyFormat = [{ `<` $name `>` }];
 
