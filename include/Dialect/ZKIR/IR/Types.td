@@ -15,6 +15,10 @@ class ZKIR_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
+def AnyZKIRType : Type<
+    CPred<"::zkir::isValidZkirType($_self)">,
+    "a valid ZKIR type", "::mlir::Type">;
+
 def ZKIR_FeltType : ZKIR_Type<"Felt", "felt"> {
   let summary = "finite field element";
   let description = [{}];
@@ -55,9 +59,5 @@ def ZKIR_ArrayType : ZKIR_Type<"Array", "array"> {
 
   let genVerifyDecl = 1;
 }
-
-def AnyZKIRType : AnyTypeOf<
-  [I1, Index, ZKIR_FeltType, ZKIR_StructType, ZKIR_ArrayType],
-  "a valid ZKIR type">;
 
 #endif // ZKIR_TYPES

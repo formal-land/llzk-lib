@@ -19,11 +19,14 @@ StructType::verifySymbol(mlir::SymbolTableCollection &symbolTable, mlir::Operati
 }
 
 mlir::LogicalResult ArrayType::verify(
-    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError, ::mlir::Type elementType,
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError, mlir::Type elementType,
     uint64_t numElements
 ) {
-  // TODO: Restrict array element type to be AnyZKIRType.
-  return mlir::success();
+  if (!isValidZkirType(elementType)) {
+    return emitError() << "expected " << "a valid ZKIR type" << " but found " << elementType;
+  } else {
+    return mlir::success();
+  }
 }
 
 } // namespace zkir
