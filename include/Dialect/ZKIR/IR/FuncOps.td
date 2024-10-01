@@ -40,30 +40,21 @@ def FuncOp : ZKIR_Op<"func", [
 
     Example:
 
-    ```mlir
+    ```zkir
     // External function definitions.
     zkir.func private @abort()
-    zkir.func private @scribble(i32, i64, memref<? x 128 x f32, #layout_map0>) -> f64
+    zkir.func private @scribble(!zkir.array<5 x !zkir.felt>, !zkir.struct<@Hello>) -> i1
 
     // A function that returns its argument twice:
-    zkir.func @count(%x: i64) -> (i64, i64)
-      attributes {fruit: "banana"} {
-      return %x, %x: i64, i64
+    zkir.func @count(%x: !zkir.felt) -> (!zkir.felt, !zkir.felt) {
+      return %x, %x: !zkir.felt, !zkir.felt
     }
-
-    // A function with an argument attribute
-    zkir.func private @example_fn_arg(%x: i32 {swift.self = unit})
-
-    // A function with a result attribute
-    zkir.func private @example_fn_result() -> (f64 {dialectName.attrName = 0 : i64})
-
-    // A function with an attribute
-    zkir.func private @example_fn_attr() attributes {dialectName.attrName = false}
     ```
   }];
 
 //TODO: the only attr actually needed is the type modifiers I think:
 //    OptionalAttr<TypedArrayAttrBase<ZKIR_TypeModiferAttr, "type modifiers">>:$modifiers,
+// That may not even have the same format as attributes used here.
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
@@ -146,10 +137,10 @@ def ReturnOp : ZKIR_Op<"return", [HasParent<"::zkir::FuncOp">, Pure,
 
     Example:
 
-    ```mlir
-    zkir.func @foo() : (i32, f8) {
+    ```zkir
+    zkir.func @foo() : (!zkir.felt, index) {
       ...
-      return %0, %1 : i32, f8
+      return %0, %1 : !zkir.felt, index
     }
     ```
   }];
@@ -179,7 +170,7 @@ def CallOp : ZKIR_Op<"call",
 
     Example:
 
-    ```mlir
+    ```zkir
     %2 = zkir.call @struct::@compute(%0, %1) : (index, index) -> index
     ```
   }];
