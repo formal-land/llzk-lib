@@ -8,12 +8,9 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 
-include "Dialect/ZKIR/IR/Dialect.td"
 include "Dialect/ZKIR/IR/Attrs.td"
 include "Dialect/ZKIR/IR/Types.td"
-
-class ZKIR_Op<string mnemonic, list<Trait> traits = []>
-    : Op<ZKIRDialect, mnemonic, traits>;
+include "Dialect/ZKIR/IR/OpsBase.td"
 
 // -----
 // Basic constructs
@@ -85,17 +82,6 @@ def ZKIR_FieldDefOp : ZKIR_Op<"field", [HasParent<"StructDefOp">, Symbol]> {
 
   let assemblyFormat = [{
     $sym_name `:` ($modifiers^)? $type attr-dict
-  }];
-}
-
-class ZKIR_FieldRefOp<string mnemonic, list<Trait> traits = []>
-    : ZKIR_Op<mnemonic, traits # [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
-  let extraClassDeclaration = [{
-    /// Gets the struct type.
-    StructType getStructType();
-
-    /// Gets the `field` definition for the field referenced in this op.
-    FieldDefOp getFieldDefOp(::mlir::SymbolTableCollection &symbolTable);
   }];
 }
 
@@ -234,22 +220,6 @@ def ZKIR_EmitContainmentOp : ZKIR_Op<"emit.in", [
 // -----
 // Field element operators
 // -----
-
-class ZKIR_BinaryFeltOp<string mnemonic, list<Trait> traits = []>
-    : ZKIR_Op<mnemonic, traits # [SameOperandsAndResultType, Pure]> {
-
-  let arguments = (ins ZKIR_FeltType:$lhs, ZKIR_FeltType:$rhs);
-  let results = (outs ZKIR_FeltType:$result);
-  let assemblyFormat = "$lhs `,` $rhs attr-dict";
-}
-
-class ZKIR_UnaryFeltOp<string mnemonic, list<Trait> traits = []>
-    : ZKIR_Op<mnemonic, traits # [SameOperandsAndResultType, Pure]> {
-
-  let arguments = (ins ZKIR_FeltType:$operand);
-  let results = (outs ZKIR_FeltType:$result);
-  let assemblyFormat = "$operand attr-dict";
-}
 
 def ZKIR_AddFeltOp : ZKIR_BinaryFeltOp<"add", [Commutative]> {
   let summary = "Addition operator for field elements";

@@ -1,0 +1,41 @@
+#ifndef ZKIR_OPS_BASE
+#define ZKIR_OPS_BASE
+
+include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
+
+include "Dialect/ZKIR/IR/Types.td"
+
+class ZKIR_Op<string mnemonic, list<Trait> traits = []>
+    : Op<ZKIRDialect, mnemonic, traits>;
+
+class ZKIR_FieldRefOp<string mnemonic, list<Trait> traits = []>
+    : ZKIR_Op<mnemonic, traits # [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  let extraClassDeclaration = [{
+    /// Gets the struct type.
+    StructType getStructType();
+
+    /// Gets the `field` definition for the field referenced in this op.
+    FieldDefOp getFieldDefOp(::mlir::SymbolTableCollection &symbolTable);
+  }];
+}
+
+class ZKIR_BinaryFeltOp<string mnemonic, list<Trait> traits = []>
+    : ZKIR_Op<mnemonic, traits # [SameOperandsAndResultType, Pure]> {
+
+  let arguments = (ins ZKIR_FeltType:$lhs, ZKIR_FeltType:$rhs);
+  let results = (outs ZKIR_FeltType:$result);
+  let assemblyFormat = "$lhs `,` $rhs attr-dict";
+}
+
+class ZKIR_UnaryFeltOp<string mnemonic, list<Trait> traits = []>
+    : ZKIR_Op<mnemonic, traits # [SameOperandsAndResultType, Pure]> {
+
+  let arguments = (ins ZKIR_FeltType:$operand);
+  let results = (outs ZKIR_FeltType:$result);
+  let assemblyFormat = "$operand attr-dict";
+}
+
+#endif // ZKIR_OPS_BASE
