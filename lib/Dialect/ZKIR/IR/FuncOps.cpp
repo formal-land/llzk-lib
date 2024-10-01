@@ -153,6 +153,25 @@ FuncOp FuncOp::clone() {
   return clone(mapper);
 }
 
+mlir::LogicalResult FuncOp::verify() {
+  llvm::function_ref<mlir::InFlightDiagnostic()> emitErrorFunc =
+      [this]() -> mlir::InFlightDiagnostic { return this->getOperation()->emitOpError(); };
+  FunctionType type = getFunctionType();
+  auto inTypes = type.getInputs();
+  for (auto ptr = inTypes.begin(); ptr < inTypes.end(); ptr++) {
+    if (zkir::checkValidZkirType(emitErrorFunc, *ptr).failed()) {
+      return mlir::failure();
+    }
+  }
+  auto resTypes = type.getResults();
+  for (auto ptr = resTypes.begin(); ptr < resTypes.end(); ptr++) {
+    if (zkir::checkValidZkirType(emitErrorFunc, *ptr).failed()) {
+      return mlir::failure();
+    }
+  }
+  return mlir::success();
+}
+
 //===----------------------------------------------------------------------===//
 // ReturnOp
 //===----------------------------------------------------------------------===//

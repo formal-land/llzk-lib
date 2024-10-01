@@ -22,11 +22,7 @@ mlir::LogicalResult ArrayType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError, mlir::Type elementType,
     uint64_t numElements
 ) {
-  if (!isValidZkirType(elementType)) {
-    return emitError() << "expected " << "a valid ZKIR type" << " but found " << elementType;
-  } else {
-    return mlir::success();
-  }
+  return checkValidZkirType(emitError, elementType);
 }
 
 } // namespace zkir

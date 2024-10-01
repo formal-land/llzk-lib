@@ -29,4 +29,13 @@ inline bool isValidZkirType(mlir::Type type) {
          llvm::isa<zkir::ArrayType>(type);
 }
 
+inline mlir::LogicalResult
+checkValidZkirType(llvm::function_ref<mlir::InFlightDiagnostic()> emitError, mlir::Type type) {
+  if (!isValidZkirType(type)) {
+    return emitError() << "expected " << "a valid ZKIR type" << " but found " << type;
+  } else {
+    return mlir::success();
+  }
+}
+
 } // namespace zkir
