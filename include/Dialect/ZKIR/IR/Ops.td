@@ -11,6 +11,7 @@ include "mlir/IR/SymbolInterfaces.td"
 include "Dialect/ZKIR/IR/Attrs.td"
 include "Dialect/ZKIR/IR/Types.td"
 include "Dialect/ZKIR/IR/OpsBase.td"
+include "Dialect/ZKIR/IR/FuncOps.td"
 
 // -----
 // Basic constructs
@@ -22,6 +23,7 @@ def ZKIR_StructDefOp : ZKIR_Op<"struct", [
   SymbolTable,
   IsolatedFromAbove,
   GraphRegionNoTerminator,
+  OpAsmOpInterface
 ]> {
   let summary = "Circuit struct/component definition";
   let description = [{
@@ -31,11 +33,11 @@ def ZKIR_StructDefOp : ZKIR_Op<"struct", [
 
       ```zkir
       zkir.struct @ComponentA {
-        func.func public @compute(%a: !zkir.felt) {
+        func public @compute(%a: !zkir.felt) {
           return
         }
 
-        func.func public @constrain(%a: !zkir.felt) {
+        func public @constrain(%a: !zkir.felt) {
           return
         }
       }
@@ -57,12 +59,19 @@ def ZKIR_StructDefOp : ZKIR_Op<"struct", [
     /// Gets the FieldDefOp that defines the field in this
     /// structure with the given name, if present.
     FieldDefOp getFieldDef(::mlir::StringAttr fieldName);
+
+    //===------------------------------------------------------------------===//
+    // OpAsmOpInterface Methods
+    //===------------------------------------------------------------------===//
+
+    /// Allow the dialect prefix to be omitted.
+    static ::llvm::StringRef getDefaultDialect() { return "zkir"; }
   }];
 
   let hasRegionVerifier = 1;
 }
 
-def ZKIR_FieldDefOp : ZKIR_Op<"field", [HasParent<"StructDefOp">, Symbol]> {
+def ZKIR_FieldDefOp : ZKIR_Op<"field", [HasParent<"::zkir::StructDefOp">, Symbol]> {
   let summary = "Struct/component field";
   let description = [{
     Describes a field in a struct/component.
@@ -85,7 +94,7 @@ def ZKIR_FieldDefOp : ZKIR_Op<"field", [HasParent<"StructDefOp">, Symbol]> {
   }];
 }
 
-def ZKIR_FieldReadOp : ZKIR_FieldRefOp<"field.read"> {
+def ZKIR_FieldReadOp : ZKIR_FieldRefOp<"readf"> {
   let summary = "Read value from a struct/component field.";
   let description = [{
     This operation reads the value from the named field from a struct/component.
@@ -99,7 +108,7 @@ def ZKIR_FieldReadOp : ZKIR_FieldRefOp<"field.read"> {
   }];
 }
 
-def ZKIR_FieldWriteOp : ZKIR_FieldRefOp<"field.write"> {
+def ZKIR_FieldWriteOp : ZKIR_FieldRefOp<"writef"> {
   let summary = "Write value to a struct/component field.";
   let description = [{
     This operation writes the value to the named field from a struct/component.
@@ -181,8 +190,7 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
 }
 
 def ZKIR_EmitEqualityOp : ZKIR_Op<"emit.eq", [
-    HasParent<"::mlir::func::FuncOp">,
-    Pure, Commutative
+    HasParent<"::zkir::FuncOp">, Pure, Commutative
 ]> {
   let summary = "";
   let description = [{}];
@@ -197,8 +205,7 @@ def ZKIR_EmitEqualityOp : ZKIR_Op<"emit.eq", [
 }
 
 def ZKIR_EmitContainmentOp : ZKIR_Op<"emit.in", [
-    HasParent<"::mlir::func::FuncOp">,
-    Pure,
+    HasParent<"::zkir::FuncOp">, Pure,
     TypesMatchWith<"lhs type matches rhs element type", "rhs", "lhs", 
                    "::llvm::cast<::zkir::ArrayType>($_self).getElementType()">
 ]> {
@@ -207,9 +214,6 @@ def ZKIR_EmitContainmentOp : ZKIR_Op<"emit.in", [
 
   let arguments = (ins AnyZKIRType:$lhs, ZKIR_ArrayType:$rhs);
 
-  // TODO: would like to avoid specifying either type here.
-  //  I can get away without LHS b/c of the TypesMatchWith above.
-  //  ArrayType is not Buildable so I can't directly avoid writing it here.
   let assemblyFormat = [{
     $lhs `,` $rhs `:` type($rhs) attr-dict
   }];

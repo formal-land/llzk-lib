@@ -1,71 +1,71 @@
 // RUN: zkir-opt -split-input-file %s 2>&1 | FileCheck %s
 
 zkir.struct @ComponentA {
-  func.func @compute(%a: !zkir.felt) {
+  func @compute(%a: !zkir.felt) {
     return
   }
 
-  func.func @constrain(%a: !zkir.felt) {
+  func @constrain(%a: !zkir.felt) {
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentA {
-//CHECK-NEXT:     func.func @compute(%arg0: !zkir.felt) {
+//CHECK-NEXT:     func @compute(%arg0: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain(%arg0: !zkir.felt) {
+//CHECK-NEXT:     func @constrain(%arg0: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
 
 zkir.struct @ComponentB<[]> {
-  func.func @compute(%a: index) {
+  func @compute(%a: index) {
     return
   }
 
-  func.func @constrain(%a: index) {
+  func @constrain(%a: index) {
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentB<[]> {
-//CHECK-NEXT:     func.func @compute(%arg0: index) {
+//CHECK-NEXT:     func @compute(%arg0: index) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain(%arg0: index) {
+//CHECK-NEXT:     func @constrain(%arg0: index) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
 
 zkir.struct @ComponentC<[@A]> {
-  func.func @constrain(%a: !zkir.felt, %b: !zkir.felt) { return }
-  func.func @compute(%a: !zkir.felt, %b: !zkir.felt) { return }
+  func @constrain(%a: !zkir.felt, %b: !zkir.felt) { return }
+  func @compute(%a: !zkir.felt, %b: !zkir.felt) { return }
 }
 //CHECK-LABEL:  zkir.struct @ComponentC<[@A]> {
-//CHECK-NEXT:     func.func @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
 
 zkir.struct @ComponentD<[@B, @D, @C]> {
-  func.func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
+  func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
     return
   }
 
-  func.func @compute(%a: !zkir.felt, %b: !zkir.felt) {
+  func @compute(%a: !zkir.felt, %b: !zkir.felt) {
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentD<[@B, @D, @C]> {
-//CHECK-NEXT:     func.func @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
@@ -75,92 +75,154 @@ zkir.struct @ComponentE<[@B, @D, @C]> {
   zkir.field @f1 : !zkir.felt
   zkir.field @f2 : [#zkir.modifier<pub>, #zkir.modifier<const>] !zkir.felt
 
-  func.func @compute(%a: !zkir.felt, %b: !zkir.felt) {
+  func @compute(%a: !zkir.felt, %b: !zkir.felt) {
     return
   }
 
-  func.func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
+  func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentE<[@B, @D, @C]> {
-//CHECK-NEXT:     zkir.field @f1 : !zkir.felt
-//CHECK-NEXT:     zkir.field @f2 : [#zkir.modifier<pub>, #zkir.modifier<const>] !zkir.felt
-//CHECK-NEXT:     func.func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     field @f1 : !zkir.felt
+//CHECK-NEXT:     field @f2 : [#zkir.modifier<pub>, #zkir.modifier<const>] !zkir.felt
+//CHECK-NEXT:     func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
+//CHECK-NEXT:     func @constrain(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
 
 zkir.struct @ComponentG1 {
-  func.func @compute() { return }
-  func.func @constrain(%a: !zkir.felt) { return }
+  func @compute() { return }
+  func @constrain(%a: !zkir.felt) { return }
 }
 
 zkir.struct @ComponentG2 {
   zkir.field @f2 : !zkir.struct<@ComponentG1>
 
-  func.func @compute() {
+  func @compute() {
     return
   }
 
-  func.func @constrain() {
+  func @constrain() {
     %b = zkir.felt.nondet
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentG1 {
-//CHECK-NEXT:     func.func @compute() {
+//CHECK-NEXT:     func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
+//CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 //CHECK-LABEL:  zkir.struct @ComponentG2 {
-//CHECK-NEXT:     zkir.field @f2 : !zkir.struct<@ComponentG1>
-//CHECK-NEXT:     func.func @compute() {
+//CHECK-NEXT:     field @f2 : !zkir.struct<@ComponentG1>
+//CHECK-NEXT:     func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain() {
+//CHECK-NEXT:     func @constrain() {
 //CHECK-NEXT:       %felt_nondet = zkir.felt.nondet
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 // -----
 
+zkir.struct @ComponentH {
+  func @compute(%self: !zkir.struct<@ComponentH>) {
+    return
+  }
 
+  func @constrain(%self: !zkir.struct<@ComponentH>) {
+    call @constrain(%self) : (!zkir.struct<@ComponentH>) -> ()
+    return
+  }
+}
+//CHECK-LABEL:  zkir.struct @ComponentH {
+//CHECK-NEXT:     func @compute(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentH>) {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentH>) {
+//CHECK-NEXT:       call @constrain(%[[A0]]) : (!zkir.struct<@ComponentH>) -> ()
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:   }
+// -----
 
+zkir.struct @ComponentJ1 {
+  field @f1 : !zkir.felt
 
+  func @compute(%self: !zkir.struct<@ComponentJ1>, %p: !zkir.felt) { return }
+  func @constrain(%self: !zkir.struct<@ComponentJ1>, %p: !zkir.felt) { return }
+}
 
+zkir.struct @ComponentJ2 {
+  field @f2 : !zkir.felt
+  field @f3 : !zkir.struct<@ComponentJ1>
 
+  func @compute(%self: !zkir.struct<@ComponentJ2>) {
+    return
+  }
 
-// zkir.struct @ComponentH1 {
-//   zkir.field @f1 : !zkir.felt
-//
-//   func.func @compute(%self: !zkir.struct<@ComponentH1>, %p: !zkir.felt) { return }
-//   func.func @constrain(%self: !zkir.struct<@ComponentH1>, %p: !zkir.felt) { return }
-// }
-//
-// zkir.struct @ComponentH2 {
-//   zkir.field @f2 : !zkir.felt
-//   zkir.field @f3 : !zkir.struct<@ComponentH1>
-//
-//   func.func @compute(%self: !zkir.struct<@ComponentH2>) {
-//     return
-//   }
-//
-//   func.func @constrain(%self: !zkir.struct<@ComponentH2>) {
-//     %a = zkir.field.read %self[@f2] : !zkir.struct<@ComponentH2>, !zkir.felt
-//     %b = zkir.field.read %self[@f3] : !zkir.struct<@ComponentH2>, !zkir.struct<@ComponentH1>
-//     //TODO: It's type checking against @constrain on the current struct and that's not we need!
-//     // prefix with @ComponentH1:: does not help.
-//     //TODO: compute functions actually need "::" syntax or something too.
-//     //I think this is reason to override the 'func' dialect.
-//     func.call @ComponentH1::@constrain(%b, %a) : (!zkir.struct<@ComponentH1>, !zkir.felt), none
-//     return
-//   }
-// }
+  func @constrain(%self: !zkir.struct<@ComponentJ2>) {
+    %a = readf %self[@f2] : !zkir.struct<@ComponentJ2>, !zkir.felt
+    %b = readf %self[@f3] : !zkir.struct<@ComponentJ2>, !zkir.struct<@ComponentJ1>
+    call @ComponentJ1::@constrain(%b, %a) : (!zkir.struct<@ComponentJ1>, !zkir.felt) -> ()
+    return
+  }
+}
+//CHECK-LABEL:  zkir.struct @ComponentJ1 {
+//CHECK-NEXT:     field @f1 : !zkir.felt
+//CHECK-NEXT:     func @compute(%arg0: !zkir.struct<@ComponentJ1>, %arg1: !zkir.felt) {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:     func @constrain(%arg0: !zkir.struct<@ComponentJ1>, %arg1: !zkir.felt) {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:   }
+//CHECK-LABEL:  zkir.struct @ComponentJ2 {
+//CHECK-NEXT:     field @f2 : !zkir.felt
+//CHECK-NEXT:     field @f3 : !zkir.struct<@ComponentJ1>
+//CHECK-NEXT:     func @compute(%arg0: !zkir.struct<@ComponentJ2>) {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:     func @constrain(%arg0: !zkir.struct<@ComponentJ2>) {
+//CHECK-NEXT:       %0 = readf %arg0[@f2] : <@ComponentJ2>, !zkir.felt
+//CHECK-NEXT:       %1 = readf %arg0[@f3] : <@ComponentJ2>, !zkir.struct<@ComponentJ1>
+//CHECK-NEXT:       call @ComponentJ1::@constrain(%1, %0) : (!zkir.struct<@ComponentJ1>, !zkir.felt) -> ()
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:   }
+// -----
+
+zkir.func @identity(%x: !zkir.felt) -> !zkir.felt {
+  return %x: !zkir.felt
+}
+
+zkir.struct @ComponentH2 {
+  func @compute(%self: !zkir.struct<@ComponentH2>) {
+    return
+  }
+
+  func @constrain(%self: !zkir.struct<@ComponentH2>, %a: !zkir.felt) {
+    call @identity(%a) : (!zkir.felt) -> (!zkir.felt)
+    return
+  }
+}
+//CHECK-LABEL:  zkir.func @identity(%arg0: !zkir.felt) -> !zkir.felt {
+//CHECK-NEXT:     return %arg0 : !zkir.felt
+//CHECK-NEXT:   }
+//CHECK-LABEL:  zkir.struct @ComponentH2 {
+//CHECK-NEXT:     func @compute(%arg0: !zkir.struct<@ComponentH2>) {
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:     func @constrain(%arg0: !zkir.struct<@ComponentH2>, %arg1: !zkir.felt) {
+//CHECK-NEXT:       %0 = call @identity(%arg1) : (!zkir.felt) -> !zkir.felt
+//CHECK-NEXT:       return
+//CHECK-NEXT:     }
+//CHECK-NEXT:   }
+// -----

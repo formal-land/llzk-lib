@@ -18,4 +18,12 @@ StructType::verifySymbol(mlir::SymbolTableCollection &symbolTable, mlir::Operati
   }
 }
 
+mlir::LogicalResult ArrayType::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError, ::mlir::Type elementType,
+    uint64_t numElements
+) {
+  // TODO: Restrict array element type to be AnyZKIRType.
+  return mlir::success();
+}
+
 } // namespace zkir

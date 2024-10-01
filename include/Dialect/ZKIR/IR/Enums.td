@@ -21,7 +21,6 @@ def ZKIR_TypeModifiers : ZKIR_I32BitEnum<"ModifiersEnum", "Type modifiers", [
   I32BitEnumAttrCaseNone<"TypeModNone", "none">,
   I32BitEnumAttrCaseBit<"TypeModPublic", 1, "pub">,
   I32BitEnumAttrCaseBit<"TypeModConstant", 2, "const">,
-  I32BitEnumAttrCaseBit<"TypeModBoolean", 3, "bool">,
 ]>;
 
 def ZKIR_FeltCmpPredicate

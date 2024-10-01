@@ -1,6 +1,5 @@
 #pragma once
 
-#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/Index/IR/IndexDialect.h>
 #include <mlir/IR/Dialect.h>
 

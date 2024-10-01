@@ -15,12 +15,10 @@ def ZKIRDialect : Dialect {
 
   let dependentDialects = [
     "::mlir::index::IndexDialect",
-    "::mlir::func::FuncDialect"
   ];
 
   let useDefaultTypePrinterParser = true;
   let useDefaultAttributePrinterParser = true;
-  // let hasConstantMaterializer = 1;
 }
 
 #endif // ZKIR_DIALECT

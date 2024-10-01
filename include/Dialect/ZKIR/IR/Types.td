@@ -17,6 +17,7 @@ class ZKIR_Type<string name, string typeMnemonic, list<Trait> traits = []>
 
 def ZKIR_FeltType : ZKIR_Type<"Felt", "felt"> {
   let summary = "finite field element";
+  let description = [{}];
 
   let extraClassDeclaration = [{
     static ::zkir::FeltType get(::mlir::MLIRContext *context) {
@@ -26,10 +27,10 @@ def ZKIR_FeltType : ZKIR_Type<"Felt", "felt"> {
 }
 
 def ZKIR_StructType : ZKIR_Type<"Struct", "struct"> {
-  let summary = "circuit component type";
+  let summary = "circuit component";
   let description = [{}];
-  let parameters = (ins "::mlir::FlatSymbolRefAttr":$name);
 
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$name);
   let assemblyFormat = [{ `<` $name `>` }];
 
   let extraClassDeclaration = [{
@@ -44,17 +45,19 @@ def ZKIR_StructType : ZKIR_Type<"Struct", "struct"> {
 }
 
 def ZKIR_ArrayType : ZKIR_Type<"Array", "array"> {
-  let summary = "array type with a static size and homogeneous element type";
-  let description = [{}];
+  let summary = "array";
+  let description = [{array type with a static size and homogeneous element type}];
 
-  //TODO: I want to restrict element type to be AnyZKIRType but that construct is not
-  //  generated in the *.inc files and it's circular so I can't use before it's defined.
   let parameters = (ins "::mlir::Type":$elementType, "uint64_t":$numElements);
   let assemblyFormat = [{
     `<` $numElements `x` $elementType `>`
   }];
+
+  let genVerifyDecl = 1;
 }
 
-def AnyZKIRType : AnyTypeOf<[Index, ZKIR_FeltType, ZKIR_StructType, ZKIR_ArrayType]>;
+def AnyZKIRType : AnyTypeOf<
+  [I1, Index, ZKIR_FeltType, ZKIR_StructType, ZKIR_ArrayType],
+  "a valid ZKIR type">;
 
 #endif // ZKIR_TYPES

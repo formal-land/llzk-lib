@@ -3,35 +3,35 @@
 zkir.struct @ComponentA1 {
   zkir.field @f1 : !zkir.felt
 
-  func.func @constrain() { return }
-  func.func @compute() { return }
+  func @constrain() { return }
+  func @compute() { return }
 }
 
 zkir.struct @ComponentA2 {
-  func.func @compute(%p: !zkir.struct<@ComponentA1>) {
-    %r = zkir.field.read %p[@f1] : !zkir.struct<@ComponentA1>, !zkir.felt
+  func @compute(%p: !zkir.struct<@ComponentA1>) {
+    %r = readf %p[@f1] : !zkir.struct<@ComponentA1>, !zkir.felt
     return
   }
 
-  func.func @constrain(%p: !zkir.struct<@ComponentA1>) {
+  func @constrain(%p: !zkir.struct<@ComponentA1>) {
     return
   }
 }
 //CHECK-LABEL: zkir.struct @ComponentA1 {
-//CHECK-NEXT:    zkir.field @f1 : !zkir.felt
-//CHECK-NEXT:    func.func @constrain() {
+//CHECK-NEXT:    field @f1 : !zkir.felt
+//CHECK-NEXT:    func @constrain() {
 //CHECK-NEXT:      return
 //CHECK-NEXT:    }
-//CHECK-NEXT:    func.func @compute() {
+//CHECK-NEXT:    func @compute() {
 //CHECK-NEXT:      return
 //CHECK-NEXT:    }
 //CHECK-NEXT:  }
 //CHECK-LABEL: zkir.struct @ComponentA2 {
-//CHECK-NEXT:    func.func @compute(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentA1>) {
-//CHECK-NEXT:      %[[T0:[0-9a-zA-Z_\.]+]] = zkir.field.read %[[A0]][@f1] : <@ComponentA1>, !zkir.felt
+//CHECK-NEXT:    func @compute(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentA1>) {
+//CHECK-NEXT:      %[[T0:[0-9a-zA-Z_\.]+]] = readf %[[A0]][@f1] : <@ComponentA1>, !zkir.felt
 //CHECK-NEXT:      return
 //CHECK-NEXT:    }
-//CHECK-NEXT:    func.func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentA1>) {
+//CHECK-NEXT:    func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentA1>) {
 //CHECK-NEXT:      return
 //CHECK-NEXT:    }
 //CHECK-NEXT:  }
@@ -40,40 +40,40 @@ zkir.struct @ComponentA2 {
 zkir.struct @ComponentB1 {
   zkir.field @f1 : !zkir.felt
 
-  func.func @compute() { return }
-  func.func @constrain() { return }
+  func @compute() { return }
+  func @constrain() { return }
 }
 
 zkir.struct @ComponentB2 {
   zkir.field @f2 : !zkir.struct<@ComponentB1>
 
-  func.func @compute() {
+  func @compute() {
     return
   }
 
-  func.func @constrain(%p: !zkir.struct<@ComponentB2>) {
-    %q = zkir.field.read %p[@f2] : !zkir.struct<@ComponentB2>, !zkir.struct<@ComponentB1>
-    %r = zkir.field.read %q[@f1] : !zkir.struct<@ComponentB1>, !zkir.felt
+  func @constrain(%p: !zkir.struct<@ComponentB2>) {
+    %q = readf %p[@f2] : !zkir.struct<@ComponentB2>, !zkir.struct<@ComponentB1>
+    %r = readf %q[@f1] : !zkir.struct<@ComponentB1>, !zkir.felt
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentB1 {
-//CHECK-NEXT:     zkir.field @f1 : !zkir.felt
-//CHECK-NEXT:     func.func @compute() {
+//CHECK-NEXT:     field @f1 : !zkir.felt
+//CHECK-NEXT:     func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain() {
+//CHECK-NEXT:     func @constrain() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 //CHECK-LABEL:  zkir.struct @ComponentB2 {
-//CHECK-NEXT:     zkir.field @f2 : !zkir.struct<@ComponentB1>
-//CHECK-NEXT:     func.func @compute() {
+//CHECK-NEXT:     field @f2 : !zkir.struct<@ComponentB1>
+//CHECK-NEXT:     func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentB2>) {
-//CHECK-NEXT:       %[[T1:[0-9a-zA-Z_\.]+]] = zkir.field.read %[[A0]][@f2] : <@ComponentB2>, !zkir.struct<@ComponentB1>
-//CHECK-NEXT:       %[[T2:[0-9a-zA-Z_\.]+]] = zkir.field.read %[[T1]][@f1] : <@ComponentB1>, !zkir.felt
+//CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentB2>) {
+//CHECK-NEXT:       %[[T1:[0-9a-zA-Z_\.]+]] = readf %[[A0]][@f2] : <@ComponentB2>, !zkir.struct<@ComponentB1>
+//CHECK-NEXT:       %[[T2:[0-9a-zA-Z_\.]+]] = readf %[[T1]][@f1] : <@ComponentB1>, !zkir.felt
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
@@ -82,35 +82,35 @@ zkir.struct @ComponentB2 {
 zkir.struct @ComponentC1 {
   zkir.field @f1 : !zkir.felt
 
-  func.func @constrain() { return }
-  func.func @compute() { return }
+  func @constrain() { return }
+  func @compute() { return }
 }
 
 zkir.struct @ComponentC2 {
-  func.func @compute(%p: !zkir.struct<@ComponentC1>, %q: !zkir.felt) {
-    zkir.field.write %p[@f1] = %q : !zkir.struct<@ComponentC1>, !zkir.felt
+  func @compute(%p: !zkir.struct<@ComponentC1>, %q: !zkir.felt) {
+    writef %p[@f1] = %q : !zkir.struct<@ComponentC1>, !zkir.felt
     return
   }
 
-  func.func @constrain(%p: !zkir.struct<@ComponentC1>) {
+  func @constrain(%p: !zkir.struct<@ComponentC1>) {
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentC1 {
-//CHECK-NEXT:     zkir.field @f1 : !zkir.felt
-//CHECK-NEXT:     func.func @constrain() {
+//CHECK-NEXT:     field @f1 : !zkir.felt
+//CHECK-NEXT:     func @constrain() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @compute() {
+//CHECK-NEXT:     func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 //CHECK-LABEL:  zkir.struct @ComponentC2 {
-//CHECK-NEXT:     func.func @compute(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentC1>, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
-//CHECK-NEXT:       zkir.field.write %[[A0]][@f1] = %[[A1]] : <@ComponentC1>, !zkir.felt
+//CHECK-NEXT:     func @compute(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentC1>, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
+//CHECK-NEXT:       writef %[[A0]][@f1] = %[[A1]] : <@ComponentC1>, !zkir.felt
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain(%[[A0]]: !zkir.struct<@ComponentC1>) {
+//CHECK-NEXT:     func @constrain(%[[A0]]: !zkir.struct<@ComponentC1>) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
@@ -119,40 +119,40 @@ zkir.struct @ComponentC2 {
 zkir.struct @ComponentD1 {
   zkir.field @f1 : !zkir.felt
 
-  func.func @constrain() { return }
-  func.func @compute() { return }
+  func @constrain() { return }
+  func @compute() { return }
 }
 
 zkir.struct @ComponentD2 {
   zkir.field @f2 : !zkir.struct<@ComponentD1>
 
-  func.func @compute() {
+  func @compute() {
     return
   }
 
-  func.func @constrain(%p: !zkir.struct<@ComponentD2>, %z: !zkir.felt) {
-    %q = zkir.field.read %p[@f2] : !zkir.struct<@ComponentD2>, !zkir.struct<@ComponentD1>
-    zkir.field.write %q[@f1] = %z : !zkir.struct<@ComponentD1>, !zkir.felt
+  func @constrain(%p: !zkir.struct<@ComponentD2>, %z: !zkir.felt) {
+    %q = readf %p[@f2] : !zkir.struct<@ComponentD2>, !zkir.struct<@ComponentD1>
+    writef %q[@f1] = %z : !zkir.struct<@ComponentD1>, !zkir.felt
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentD1 {
-//CHECK-NEXT:     zkir.field @f1 : !zkir.felt
-//CHECK-NEXT:     func.func @constrain() {
+//CHECK-NEXT:     field @f1 : !zkir.felt
+//CHECK-NEXT:     func @constrain() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @compute() {
+//CHECK-NEXT:     func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 //CHECK-LABEL:  zkir.struct @ComponentD2 {
-//CHECK-NEXT:     zkir.field @f2 : !zkir.struct<@ComponentD1>
-//CHECK-NEXT:     func.func @compute() {
+//CHECK-NEXT:     field @f2 : !zkir.struct<@ComponentD1>
+//CHECK-NEXT:     func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentD2>, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
-//CHECK-NEXT:       %[[T1:[0-9a-zA-Z_\.]+]] = zkir.field.read %[[A0]][@f2] : <@ComponentD2>, !zkir.struct<@ComponentD1>
-//CHECK-NEXT:       zkir.field.write %[[T1]][@f1] = %[[A1]] : <@ComponentD1>, !zkir.felt
+//CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentD2>, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
+//CHECK-NEXT:       %[[T1:[0-9a-zA-Z_\.]+]] = readf %[[A0]][@f2] : <@ComponentD2>, !zkir.struct<@ComponentD1>
+//CHECK-NEXT:       writef %[[T1]][@f1] = %[[A1]] : <@ComponentD1>, !zkir.felt
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
@@ -161,41 +161,41 @@ zkir.struct @ComponentD2 {
 zkir.struct @ComponentF1 {
   zkir.field @f1 : !zkir.felt
 
-  func.func @constrain() { return }
-  func.func @compute() { return }
+  func @constrain() { return }
+  func @compute() { return }
 }
 
 zkir.struct @ComponentF2 {
   zkir.field @f2 : !zkir.struct<@ComponentF1>
 
-  func.func @compute() {
+  func @compute() {
     return
   }
 
-  func.func @constrain(%p: !zkir.struct<@ComponentF2>, %q: !zkir.struct<@ComponentF1>, %z: !zkir.felt) {
-    zkir.field.write %p[@f2] = %q : !zkir.struct<@ComponentF2>, !zkir.struct<@ComponentF1>
-    zkir.field.write %q[@f1] = %z : !zkir.struct<@ComponentF1>, !zkir.felt
+  func @constrain(%p: !zkir.struct<@ComponentF2>, %q: !zkir.struct<@ComponentF1>, %z: !zkir.felt) {
+    writef %p[@f2] = %q : !zkir.struct<@ComponentF2>, !zkir.struct<@ComponentF1>
+    writef %q[@f1] = %z : !zkir.struct<@ComponentF1>, !zkir.felt
     return
   }
 }
 //CHECK-LABEL:  zkir.struct @ComponentF1 {
-//CHECK-NEXT:     zkir.field @f1 : !zkir.felt
-//CHECK-NEXT:     func.func @constrain() {
+//CHECK-NEXT:     field @f1 : !zkir.felt
+//CHECK-NEXT:     func @constrain() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @compute() {
+//CHECK-NEXT:     func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
 //CHECK-LABEL:  zkir.struct @ComponentF2 {
-//CHECK-NEXT:     zkir.field @f2 : !zkir.struct<@ComponentF1>
-//CHECK-NEXT:     func.func @compute() {
+//CHECK-NEXT:     field @f2 : !zkir.struct<@ComponentF1>
+//CHECK-NEXT:     func @compute() {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
-//CHECK-NEXT:     func.func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentF2>,
+//CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentF2>,
 //CHECK-SAME:         %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentF1>, %[[A2:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
-//CHECK-NEXT:       zkir.field.write %[[A0]][@f2] = %[[A1]] : <@ComponentF2>, !zkir.struct<@ComponentF1>
-//CHECK-NEXT:       zkir.field.write %[[A1]][@f1] = %[[A2]] : <@ComponentF1>, !zkir.felt
+//CHECK-NEXT:       writef %[[A0]][@f2] = %[[A1]] : <@ComponentF2>, !zkir.struct<@ComponentF1>
+//CHECK-NEXT:       writef %[[A1]][@f1] = %[[A2]] : <@ComponentF1>, !zkir.felt
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }

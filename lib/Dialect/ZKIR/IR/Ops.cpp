@@ -1,7 +1,6 @@
 #include "Dialect/ZKIR/IR/Ops.h"
 #include "Dialect/ZKIR/IR/Types.h"
 
-#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/Diagnostics.h>
 
 #include <llvm/ADT/Twine.h>
@@ -35,7 +34,7 @@ mlir::LogicalResult StructDefOp::verifyRegions() {
   bool foundConstrain = false;
   for (auto &op : getBody().front()) {
     if (!llvm::isa<FieldDefOp>(op)) {
-      if (auto func_def = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
+      if (auto func_def = llvm::dyn_cast<::zkir::FuncOp>(op)) {
         auto func_name = func_def.getSymName();
         if ("compute" == func_name) {
           if (foundCompute) {
@@ -178,8 +177,8 @@ void CreateArrayOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
 namespace {
 
 inline mlir::LogicalResult verifyEmitOp(Operation *op) {
-  // No need for dyn_cast due to HasParent<"mlir::func::FuncOp"> trait
-  auto func_name = llvm::cast<mlir::func::FuncOp>(op->getParentOp()).getSymName();
+  // No need for dyn_cast due to HasParent<"::zkir::FuncOp"> trait
+  auto func_name = llvm::cast<::zkir::FuncOp>(op->getParentOp()).getSymName();
   if ("constrain" == func_name) {
     return mlir::success();
   } else {
