@@ -15,3 +15,21 @@ zkir.func @identity(%x: !zkir.felt) -> !zkir.felt {
 //CHECK-NEXT:     return %arg0 : !zkir.felt
 //CHECK-NEXT:   }
 // -----
+
+zkir.func @split(%x: index) -> (index, index) {
+  %0 = index.constant 1
+  return %x, %0 : index, index
+}
+zkir.func @user(%x: index) -> (index, index) {
+  %1, %2 = zkir.call @split(%x) : (index) -> (index, index)
+  return %1, %2 : index, index
+}
+//CHECK-LABEL:  zkir.func @split(%arg0: index) -> (index, index) {
+//CHECK-NEXT:     %idx1 = index.constant 1
+//CHECK-NEXT:     return %arg0, %idx1 : index, index
+//CHECK-NEXT:   }
+//CHECK-LABEL:  zkir.func @user(%arg0: index) -> (index, index) {
+//CHECK-NEXT:     %0:2 = call @split(%arg0) : (index) -> (index, index)
+//CHECK-NEXT:     return %0#0, %0#1 : index, index
+//CHECK-NEXT:   }
+// -----

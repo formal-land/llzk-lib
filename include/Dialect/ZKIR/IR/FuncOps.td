@@ -49,6 +49,12 @@ def FuncOp : ZKIR_Op<"func", [
     zkir.func @count(%x: !zkir.felt) -> (!zkir.felt, !zkir.felt) {
       return %x, %x: !zkir.felt, !zkir.felt
     }
+
+    // Function definition within a component
+    zkir.struct @NonZero {
+      func @compute(%a: !zkir.felt) { return }
+      func @constrain(%a: !zkir.felt) { return }
+    }
     ```
   }];
 
@@ -171,7 +177,12 @@ def CallOp : ZKIR_Op<"call",
     Example:
 
     ```zkir
-    %2 = zkir.call @struct::@compute(%0, %1) : (index, index) -> index
+    // Call a function within the current component or a global function
+    zkir.call @constrain(%0) : (!zkir.struct<@Bob>) -> ()
+    %1, %2 = zkir.call @split(%x) : (index) -> (index, index)
+
+    // Call a function in another component
+    %2 = zkir.call @OtherStruct::@compute(%3, %4) : (index, index) -> index
     ```
   }];
 
