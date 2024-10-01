@@ -154,8 +154,9 @@ FuncOp FuncOp::clone() {
 }
 
 mlir::LogicalResult FuncOp::verify() {
-  llvm::function_ref<mlir::InFlightDiagnostic()> emitErrorFunc =
-      [this]() -> mlir::InFlightDiagnostic { return this->getOperation()->emitOpError(); };
+  auto emitErrorFunc = [op = this->getOperation()]() -> mlir::InFlightDiagnostic {
+    return op->emitOpError();
+  };
   FunctionType type = getFunctionType();
   auto inTypes = type.getInputs();
   for (auto ptr = inTypes.begin(); ptr < inTypes.end(); ptr++) {
