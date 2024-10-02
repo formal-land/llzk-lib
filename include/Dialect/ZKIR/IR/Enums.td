@@ -17,12 +17,6 @@ class ZKIR_I32BitEnum<string name, string desc, list<BitEnumAttrCaseBase> cases>
   let cppNamespace = "zkir";
 }
 
-def ZKIR_TypeModifiers : ZKIR_I32BitEnum<"ModifiersEnum", "Type modifiers", [
-  I32BitEnumAttrCaseNone<"TypeModNone", "none">,
-  I32BitEnumAttrCaseBit<"TypeModPublic", 1, "pub">,
-  I32BitEnumAttrCaseBit<"TypeModConstant", 2, "const">,
-]>;
-
 def ZKIR_FeltCmpPredicate
     : ZKIR_I32Enum<"FeltCmpPredicate", "Field element comparison predicate", [
       I32EnumAttrCase<"EQ", 0, "eq">,

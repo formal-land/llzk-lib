@@ -79,18 +79,19 @@ def ZKIR_FieldDefOp : ZKIR_Op<"field", [HasParent<"::zkir::StructDefOp">, Symbol
     Example:
 
     ```zkir
-    zkir.field @f : !zkir.felt
+    zkir.field @f1 : !zkir.felt
+    zkir.field @f2 : !zkir.felt {zkir.pub}
     ```
   }];
 
-  let arguments = (ins
-      SymbolNameAttr:$sym_name,
-      OptionalAttr<TypedArrayAttrBase<ZKIR_TypeModiferAttr, "type modifiers">>:$modifiers,
-      TypeAttrOf<AnyZKIRType>:$type
-    );
+  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttrOf<AnyZKIRType>:$type);
 
   let assemblyFormat = [{
-    $sym_name `:` ($modifiers^)? $type attr-dict
+    $sym_name `:` $type attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    bool hasPublicAttr();
   }];
 }
 

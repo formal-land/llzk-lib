@@ -20,11 +20,6 @@ class ZKIR_EnumAttr<EnumAttrInfo enum, string name, string enumMnemonic,
   let mnemonic = enumMnemonic;
 }
 
-def ZKIR_TypeModiferAttr
-    : ZKIR_EnumAttr<ZKIR_TypeModifiers, "modifier", "modifier"> {
-  let assemblyFormat = [{ `<` $value `>` }];
-}
-
 def ZKIR_CmpPredicateAttr : ZKIR_EnumAttr<ZKIR_FeltCmpPredicate, "cmp_predicate", "cmp"> {
   let assemblyFormat = [{ $value }];
 }
@@ -41,6 +36,19 @@ def ZKIR_FeltConstAttr : ZKIR_Attr<"FeltConst", "constfelt", [TypedAttrInterface
 
   let extraClassDeclaration = [{
     ::mlir::Type getType() const;
+  }];
+}
+
+def ZKIR_PubModifierAttr : ZKIR_Attr<"Public", "pub"> {
+  let summary = "A unit attribute to mark a type as public";
+  let description = [{
+    Examples:
+
+    ```zkir
+    zkir.field @field_name : !zkir.felt {zkir.pub}
+
+    zkir.func @func_name(%0: !zkir.felt {zkir.pub})
+    ```
   }];
 }
 

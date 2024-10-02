@@ -73,7 +73,7 @@ zkir.struct @ComponentD<[@B, @D, @C]> {
 
 zkir.struct @ComponentE<[@B, @D, @C]> {
   zkir.field @f1 : !zkir.felt
-  zkir.field @f2 : [#zkir.modifier<pub>, #zkir.modifier<const>] !zkir.felt
+  zkir.field @f2 : !zkir.felt {zkir.pub}
 
   func @compute(%a: !zkir.felt, %b: !zkir.felt) {
     return
@@ -85,7 +85,7 @@ zkir.struct @ComponentE<[@B, @D, @C]> {
 }
 //CHECK-LABEL:  zkir.struct @ComponentE<[@B, @D, @C]> {
 //CHECK-NEXT:     field @f1 : !zkir.felt
-//CHECK-NEXT:     field @f2 : [#zkir.modifier<pub>, #zkir.modifier<const>] !zkir.felt
+//CHECK-NEXT:     field @f2 : !zkir.felt {zkir.pub}
 //CHECK-NEXT:     func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
