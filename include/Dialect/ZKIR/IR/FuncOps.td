@@ -58,9 +58,20 @@ def FuncOp : ZKIR_Op<"func", [
     ```
   }];
 
-//TODO: the only attr actually needed is the type modifiers I think:
-//    OptionalAttr<TypedArrayAttrBase<ZKIR_TypeModiferAttr, "type modifiers">>:$modifiers,
-// That may not even have the same format as attributes used here.
+  // Duplicated from the pre-defined `func` dialect. We don't store the visibility attribute but, since
+  //  we use `function_interface_impl` for parsing/printing, there is still the requirement that global
+  //  functions declared without a body must specify the `private` visibility. Additionally, the default
+  //  parsing/printing functions allow attributes on the arguments, results, and function itself.
+  //    ```zkir
+  //    // Argument attribute
+  //    zkir.func private @example_fn_arg(%x: i1 {zkir.pub})
+  //
+  //    // Result attribute
+  //    zkir.func private @example_fn_result() -> (i1 {dialectName.attrName = 0 : i1})
+  //
+  //    // Function attribute
+  //    zkir.func private @example_fn_attr() attributes {dialectName.attrName = false}
+  //    ```
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
@@ -96,6 +107,9 @@ def FuncOp : ZKIR_Op<"func", [
     /// asserts that the attributes of the current function and dest are
     /// compatible.
     void cloneInto(FuncOp dest, ::mlir::IRMapping &mapper);
+
+    /// Return `true` iff the argument at the given index has `pub` attribute.
+    bool hasArgPublicAttr(unsigned index);
 
     //===------------------------------------------------------------------===//
     // FunctionOpInterface Methods

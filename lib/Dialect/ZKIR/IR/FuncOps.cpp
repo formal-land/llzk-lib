@@ -27,12 +27,14 @@ FuncOp FuncOp::create(
   FuncOp::build(builder, state, name, type, attrs);
   return cast<FuncOp>(Operation::create(state));
 }
+
 FuncOp FuncOp::create(
     Location location, StringRef name, FunctionType type, Operation::dialect_attr_range attrs
 ) {
   SmallVector<NamedAttribute, 8> attrRef(attrs);
   return create(location, name, type, llvm::ArrayRef(attrRef));
 }
+
 FuncOp FuncOp::create(
     Location location, StringRef name, FunctionType type, ArrayRef<NamedAttribute> attrs,
     ArrayRef<DictionaryAttr> argAttrs
@@ -153,10 +155,21 @@ FuncOp FuncOp::clone() {
   return clone(mapper);
 }
 
+bool FuncOp::hasArgPublicAttr(unsigned index) {
+  if (index < this->getNumArguments()) {
+    DictionaryAttr res = mlir::function_interface_impl::getArgAttrDict(*this, index);
+    return res ? res.contains(PublicAttr::name) : false;
+  } else {
+    // TODO: print error? requested attribute for non-existant argument index
+    return false;
+  }
+}
+
 mlir::LogicalResult FuncOp::verify() {
   auto emitErrorFunc = [op = this->getOperation()]() -> mlir::InFlightDiagnostic {
     return op->emitOpError();
   };
+  // Ensure that only valid ZKIR types are used for arguments and return
   FunctionType type = getFunctionType();
   auto inTypes = type.getInputs();
   for (auto ptr = inTypes.begin(); ptr < inTypes.end(); ptr++) {

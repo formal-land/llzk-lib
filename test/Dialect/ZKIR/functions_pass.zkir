@@ -33,3 +33,17 @@ zkir.func @user(%x: index) -> (index, index) {
 //CHECK-NEXT:     return %0#0, %0#1 : index, index
 //CHECK-NEXT:   }
 // -----
+
+zkir.func private @example_arg_attr1(%x: i1 {zkir.pub}, %y: i1)
+//CHECK-LABEL:  zkir.func private @example_arg_attr1(i1 {zkir.pub}, i1)
+// -----
+
+zkir.func private @example_arg_attr2(
+    %a: !zkir.felt {zkir.pub},
+    %b: index {zkir.pub}) {
+  return
+}
+//CHECK-LABEL:  zkir.func private @example_arg_attr2(%arg0: !zkir.felt {zkir.pub}, %arg1: index {zkir.pub}) {
+//CHECK-NEXT:     return
+//CHECK-NEXT:   }
+// -----

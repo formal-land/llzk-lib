@@ -83,9 +83,7 @@ FieldDefOp StructDefOp::getFieldDef(::mlir::StringAttr fieldName) {
 // -----
 // FieldDefOp
 // -----
-bool FieldDefOp::hasPublicAttr() {
-  return getOperation()->hasAttr(PublicAttr::name);
-}
+bool FieldDefOp::hasPublicAttr() { return getOperation()->hasAttr(PublicAttr::name); }
 
 // -----
 // FieldRefOp implementations
