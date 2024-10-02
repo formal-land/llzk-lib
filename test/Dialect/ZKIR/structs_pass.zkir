@@ -108,7 +108,7 @@ zkir.struct @ComponentG2 {
   }
 
   func @constrain() {
-    %b = zkir.felt.nondet
+    %b = zkir.nondetfelt
     return
   }
 }
@@ -126,7 +126,7 @@ zkir.struct @ComponentG2 {
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:     func @constrain() {
-//CHECK-NEXT:       %felt_nondet = zkir.felt.nondet
+//CHECK-NEXT:       %felt_nondet = nondetfelt
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:   }
