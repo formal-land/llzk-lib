@@ -121,19 +121,19 @@ def ZKIR_FieldWriteOp : ZKIR_FieldRefOp<"writef"> {
   }];
 }
 
-def ZKIR_FeltConstantOp : ZKIR_Op<"felt.const", [
+def ZKIR_FeltConstantOp : ZKIR_Op<"constfelt", [
   ConstantLike, Pure,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
 ]> {
   let summary = "field element constant";
   let description = [{
-    The `zkir.felt.const` operation produces a felt-typed SSA value equal to
+    The `zkir.constfelt` operation produces a felt-typed SSA value equal to
     some felt-typed integer constant.
 
     Example:
 
     ```zkir
-    %0 = zkir.felt.const 42
+    %0 = zkir.constfelt 42
     ```
   }];
 

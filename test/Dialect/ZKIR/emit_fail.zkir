@@ -152,8 +152,8 @@ zkir.struct @TestComponent09 {
 
 // Test: [emit.eq] outside of a function body
 module {
-    %a = zkir.felt.const 7653
-    %b = zkir.felt.const 34572
+    %a = zkir.constfelt 7653
+    %b = zkir.constfelt 34572
     // expected-error@+1 {{'zkir.emit.eq' op expects parent op 'zkir.func'}}
     zkir.emit.eq %a, %b
 }
