@@ -189,7 +189,7 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
   let assemblyFormat = "$elements attr-dict `:` type($result)";
 }
 
-def ZKIR_EmitEqualityOp : ZKIR_Op<"emit.eq", [
+def ZKIR_EmitEqualityOp : ZKIR_Op<"emit_eq", [
     HasParent<"::zkir::FuncOp">, Pure, Commutative
 ]> {
   let summary = "";
@@ -204,7 +204,7 @@ def ZKIR_EmitEqualityOp : ZKIR_Op<"emit.eq", [
   let hasVerifier = 1;
 }
 
-def ZKIR_EmitContainmentOp : ZKIR_Op<"emit.in", [
+def ZKIR_EmitContainmentOp : ZKIR_Op<"emit_in", [
     HasParent<"::zkir::FuncOp">, Pure,
     TypesMatchWith<"lhs type matches rhs element type", "rhs", "lhs", 
                    "::llvm::cast<::zkir::ArrayType>($_self).getElementType()">

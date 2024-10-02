@@ -2,7 +2,7 @@
 
 zkir.struct @ComponentA {
   func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
-    zkir.emit.eq %a, %b
+    zkir.emit_eq %a, %b
     return
   }
 
@@ -12,7 +12,7 @@ zkir.struct @ComponentA {
 }
 //CHECK-LABEL:  zkir.struct @ComponentA {
 //CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.felt, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
-//CHECK-NEXT:       zkir.emit.eq %[[A0]], %[[A1]]
+//CHECK-NEXT:       emit_eq %[[A0]], %[[A1]]
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:     func @compute() {
@@ -23,7 +23,7 @@ zkir.struct @ComponentA {
 
 zkir.struct @ComponentB {
   func @constrain(%a: !zkir.felt, %b: !zkir.array<5 x !zkir.felt>) {
-    zkir.emit.in %a, %b : !zkir.array<5 x !zkir.felt>
+    zkir.emit_in %a, %b : !zkir.array<5 x !zkir.felt>
     return
   }
 
@@ -33,7 +33,7 @@ zkir.struct @ComponentB {
 }
 //CHECK-LABEL:  zkir.struct @ComponentB {
 //CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.felt, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.array<5 x !zkir.felt>) {
-//CHECK-NEXT:       zkir.emit.in %[[A0]], %[[A1]] : <5 x !zkir.felt>
+//CHECK-NEXT:       emit_in %[[A0]], %[[A1]] : <5 x !zkir.felt>
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:     func @compute() {
@@ -44,7 +44,7 @@ zkir.struct @ComponentB {
 
 zkir.struct @ComponentC {
   func @constrain(%a: index, %b: !zkir.array<89 x index>) {
-    zkir.emit.in %a, %b : !zkir.array<89 x index>
+    zkir.emit_in %a, %b : !zkir.array<89 x index>
     return
   }
 
@@ -54,7 +54,7 @@ zkir.struct @ComponentC {
 }
 //CHECK-LABEL:  zkir.struct @ComponentC {
 //CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: index, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.array<89 x index>) {
-//CHECK-NEXT:       zkir.emit.in %[[A0]], %[[A1]] : <89 x index>
+//CHECK-NEXT:       emit_in %[[A0]], %[[A1]] : <89 x index>
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:     func @compute() {
@@ -65,7 +65,7 @@ zkir.struct @ComponentC {
 
 zkir.struct @ComponentD {
   func @constrain(%a: !zkir.struct<@ComponentD>, %b: !zkir.array<89 x !zkir.struct<@ComponentD>>) {
-    zkir.emit.in %a, %b : !zkir.array<89 x !zkir.struct<@ComponentD>>
+    zkir.emit_in %a, %b : !zkir.array<89 x !zkir.struct<@ComponentD>>
     return
   }
 
@@ -75,7 +75,7 @@ zkir.struct @ComponentD {
 }
 //CHECK-LABEL:  zkir.struct @ComponentD {
 //CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.struct<@ComponentD>, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.array<89 x !zkir.struct<@ComponentD>>) {
-//CHECK-NEXT:       zkir.emit.in %[[A0]], %[[A1]] : <89 x !zkir.struct<@ComponentD>>
+//CHECK-NEXT:       emit_in %[[A0]], %[[A1]] : <89 x !zkir.struct<@ComponentD>>
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:     func @compute() {
@@ -87,7 +87,7 @@ zkir.struct @ComponentD {
 
 zkir.struct @ComponentE {
   func @constrain(%a: !zkir.array<2 x index>, %b: !zkir.array<89 x !zkir.array<2 x index>>) {
-    zkir.emit.in %a, %b : !zkir.array<89 x !zkir.array<2 x index>>
+    zkir.emit_in %a, %b : !zkir.array<89 x !zkir.array<2 x index>>
     return
   }
 
@@ -97,7 +97,7 @@ zkir.struct @ComponentE {
 }
 //CHECK-LABEL:  zkir.struct @ComponentE {
 //CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.array<2 x index>, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.array<89 x !zkir.array<2 x index>>) {
-//CHECK-NEXT:       zkir.emit.in %[[A0]], %[[A1]] : <89 x !zkir.array<2 x index>>
+//CHECK-NEXT:       emit_in %[[A0]], %[[A1]] : <89 x !zkir.array<2 x index>>
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:     func @compute() {
