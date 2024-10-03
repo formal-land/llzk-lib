@@ -259,6 +259,11 @@ def ZKIR_NegFeltOp : ZKIR_UnaryFeltOp<"neg"> {
   let description = [{}];
 }
 
+def ZKIR_InvFeltOp : ZKIR_UnaryFeltOp<"inv"> {
+  let summary = "Inverse operator for field elements";
+  let description = [{}];
+}
+
 def ZKIR_AndFeltOp : ZKIR_BinaryFeltOp<"and", [Commutative]> {
   let summary = "Bitwise AND operator for field elements";
   let description = [{}];
