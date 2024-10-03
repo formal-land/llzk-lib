@@ -176,6 +176,14 @@ void CreateArrayOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
 }
 
 // -----
+// CreateStructOp
+// -----
+
+void CreateStructOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+  setNameFn(getResult(), "self");
+}
+
+// -----
 // Emit*Op
 // -----
 

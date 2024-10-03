@@ -165,6 +165,25 @@ def ZKIR_FeltNonDetOp : ZKIR_Op<"nondetfelt", [
   let assemblyFormat = "attr-dict";
 }
 
+def ZKIR_CreateStructOp : ZKIR_Op<"new_struct", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+]> {
+  let summary = "creates a new struct";
+  let description = [{
+    This operation creates a new, uninitialized instance of a struct.
+
+    Example:
+
+    ```zkir
+    %self = zkir.new_struct : !zkir.struct<@Reg>
+    ```
+  }];
+
+  let results = (outs ZKIR_StructType:$result);
+
+  let assemblyFormat = "attr-dict `:` type($result)";
+}
+
 def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
     Pure,
