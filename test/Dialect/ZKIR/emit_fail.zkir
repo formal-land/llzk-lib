@@ -2,6 +2,7 @@
 
 // Test: [emit_in] type annotation does not match type of parameter 2 in size
 zkir.struct @TestComponent01 {
+  func @compute() { return }
   func @constrain(
         %a: !zkir.felt,
         %b: !zkir.array<5 x !zkir.felt> // expected-note {{prior use here}}
@@ -10,15 +11,12 @@ zkir.struct @TestComponent01 {
     zkir.emit_in %a, %b : !zkir.array<6 x !zkir.felt>
     return
   }
-
-  func @compute() {
-    return
-  }
 }
 // -----
 
 // Test: [emit_in] type annotation does not match type of parameter 2 in element type
 zkir.struct @TestComponent02 {
+  func @compute() { return }
   func @constrain(
         %a: index,
         %b: !zkir.array<5 x !zkir.felt> // expected-note {{prior use here}}
@@ -27,15 +25,12 @@ zkir.struct @TestComponent02 {
     zkir.emit_in %a, %b : !zkir.array<5 x index>
     return
   }
-
-  func @compute() {
-    return
-  }
 }
 // -----
 
 // Test: [emit_in] type of parameter 1 does not match array element type of annotation
 zkir.struct @TestComponent03 {
+  func @compute() { return }
   func @constrain(
         %a: index, // expected-note {{prior use here}}
         %b: !zkir.array<5 x !zkir.felt>
@@ -44,22 +39,15 @@ zkir.struct @TestComponent03 {
     zkir.emit_in %a, %b : !zkir.array<5 x !zkir.felt>
     return
   }
-
-  func @compute() {
-    return
-  }
 }
 // -----
 
 // Test: [emit_in] type annotation is not an array type
 zkir.struct @TestComponent04 {
+  func @compute() { return }
   func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
     // expected-error@+1 {{custom op 'zkir.emit_in' invalid kind of Type specified}}
     zkir.emit_in %a, %b : !zkir.felt
-    return
-  }
-
-  func @compute() {
     return
   }
 }
@@ -67,6 +55,7 @@ zkir.struct @TestComponent04 {
 
 // Test: [emit_in] type of parameter 2 is not an array
 zkir.struct @TestComponent05 {
+  func @compute() { return }
   func @constrain(
         %a: !zkir.felt,
         %b: !zkir.felt  // expected-note {{prior use here}}
@@ -75,15 +64,12 @@ zkir.struct @TestComponent05 {
     zkir.emit_in %a, %b : !zkir.array<5 x !zkir.felt>
     return
   }
-
-  func @compute() {
-    return
-  }
 }
 // -----
 
 // Test: [emit_in] type of parameter 1 does not match array element type of parameter 2
 zkir.struct @TestComponent06 {
+  func @compute() { return }
   func @constrain(
         %a: index, // expected-note {{prior use here}}
         %b: !zkir.array<5 x !zkir.felt>
@@ -92,25 +78,18 @@ zkir.struct @TestComponent06 {
     zkir.emit_in %a, %b : !zkir.array<5 x !zkir.felt>
     return
   }
-
-  func @compute() {
-    return
-  }
 }
 // -----
 
 // Test: [emit_eq] lhs has invalid type
 zkir.struct @TestComponent07 {
+  func @compute() { return }
   func @constrain(
-        %a: index, // expected-note {{prior use here}}
+        %a: !zkir.struct<@TestComponent07>, // expected-note {{prior use here}}
         %b: !zkir.felt
         ) {
-    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.felt' vs 'index'}}
-    zkir.emit_eq %a, %b
-    return
-  }
-
-  func @compute() {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.felt' vs '!zkir.struct<@TestComponent07>'}}
+    zkir.emit_eq %a, %b : !zkir.felt
     return
   }
 }
@@ -118,33 +97,167 @@ zkir.struct @TestComponent07 {
 
 // Test: [emit_eq] rhs has invalid type
 zkir.struct @TestComponent08 {
+  func @compute() { return }
   func @constrain(
-        %a: index, // expected-note {{prior use here}}
-        %b: !zkir.felt
+        %a: index,
+        %b: !zkir.struct<@TestComponent08> // expected-note {{prior use here}}
         ) {
-    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.felt' vs 'index'}}
-    zkir.emit_eq %b, %a
+    // expected-error@+1 {{use of value '%b' expects different type than prior uses: 'index' vs '!zkir.struct<@TestComponent08>'}}
+    zkir.emit_eq %a, %b : index
     return
   }
+}
+// -----
 
-  func @compute() {
+// Test: [emit_eq] lhs type does not match the given type
+zkir.struct @TestComponent09 {
+  func @compute() { return }
+  func @constrain(
+        %a: !zkir.felt, // expected-note {{prior use here}}
+        %b: index
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: 'index' vs '!zkir.felt'}}
+    zkir.emit_eq %a, %b : index
+    return
+  }
+}
+// -----
+
+// Test: [emit_eq] rhs type does not match the given type
+zkir.struct @TestComponent10 {
+  func @compute() { return }
+  func @constrain(
+        %a: index,
+        %b: !zkir.felt // expected-note {{prior use here}}
+        ) {
+    // expected-error@+1 {{use of value '%b' expects different type than prior uses: 'index' vs '!zkir.felt'}}
+    zkir.emit_eq %a, %b : index
     return
   }
 }
 // -----
 
 // Test: [emit_eq] both sides have invalid (although the same) type
-zkir.struct @TestComponent09 {
+zkir.struct @TestComponent11 {
+  func @compute() { return }
   func @constrain(
-        %a: index, // expected-note {{prior use here}}
-        %b: index
+        %a: !zkir.struct<@TestComponent11>,
+        %b: !zkir.struct<@TestComponent11>
         ) {
-    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.felt' vs 'index'}}
-    zkir.emit_eq %a, %b
+    // expected-error@+1 {{'zkir.emit_eq' op operand #0 must be non-struct type, but got '!zkir.struct<@TestComponent11>'}}
+    zkir.emit_eq %a, %b : !zkir.struct<@TestComponent11>
     return
   }
+}
+// -----
 
-  func @compute() {
+// Test: [emit_eq] both sides have invalid (although the same) type
+zkir.struct @TestComponent12 {
+  func @compute() { return }
+  func @constrain(
+        %a: !zkir.array<3 x !zkir.struct<@TestComponent12>>,
+        %b: !zkir.array<3 x !zkir.struct<@TestComponent12>>
+        ) {
+    // expected-error@+1 {{'zkir.emit_eq' op operand #0 must be non-struct type, but got '!zkir.array<3 x !zkir.struct<@TestComponent12>>'}}
+    zkir.emit_eq %a, %b : !zkir.array<3 x !zkir.struct<@TestComponent12>>
+    return
+  }
+}
+// -----
+
+// Test: [emit_eq] both sides have invalid (although the same) type
+zkir.struct @TestComponent13 {
+  func @compute() { return }
+  func @constrain(
+        %a: !zkir.array<3 x !zkir.array<2 x !zkir.struct<@TestComponent13>>>,
+        %b: !zkir.array<3 x !zkir.array<2 x !zkir.struct<@TestComponent13>>>
+        ) {
+    // expected-error@+1 {{'zkir.emit_eq' op operand #0 must be non-struct type, but got '!zkir.array<3 x !zkir.array<2 x !zkir.struct<@TestComponent13>>>'}}
+    zkir.emit_eq %a, %b : !zkir.array<3 x !zkir.array<2 x !zkir.struct<@TestComponent13>>>
+    return
+  }
+}
+// -----
+
+// Test: [emit_eq] lhs array size does not match the type given
+zkir.struct @TestComponent14 {
+  func @compute() { return }
+  func @constrain(
+        %a: !zkir.array<9 x index>, // expected-note {{prior use here}}
+        %b: !zkir.array<3 x index>
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.array<3 x index>' vs '!zkir.array<9 x index>'}}
+    zkir.emit_eq %a, %b : !zkir.array<3 x index>
+    return
+  }
+}
+// -----
+
+// Test: [emit_eq] rhs array size does not match the type given
+zkir.struct @TestComponent15 {
+  func @compute() { return }
+  func @constrain(
+        %a: !zkir.array<3 x index>,
+        %b: !zkir.array<9 x index> // expected-note {{prior use here}}
+        ) {
+    // expected-error@+1 {{use of value '%b' expects different type than prior uses: '!zkir.array<3 x index>' vs '!zkir.array<9 x index>'}}
+    zkir.emit_eq %a, %b : !zkir.array<3 x index>
+    return
+  }
+}
+// -----
+
+// Test: [emit_eq] neither array size matches the type given
+zkir.struct @TestComponent16 {
+  func @compute() { return }
+  func @constrain(
+        %a: !zkir.array<9 x index>, // expected-note {{prior use here}}
+        %b: !zkir.array<9 x index>
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.array<3 x index>' vs '!zkir.array<9 x index>'}}
+    zkir.emit_eq %a, %b : !zkir.array<3 x index>
+    return
+  }
+}
+// -----
+
+// Test: [emit_eq] lhs array size does not match the type given
+zkir.struct @TestComponent17 {
+  func @compute() { return }
+  func @constrain(
+        %a: !zkir.array<3 x !zkir.felt>, // expected-note {{prior use here}}
+        %b: !zkir.array<3 x index>
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.array<3 x index>' vs '!zkir.array<3 x !zkir.felt>'}}
+    zkir.emit_eq %a, %b : !zkir.array<3 x index>
+    return
+  }
+}
+// -----
+
+// Test: [emit_eq] rhs array size does not match the type given
+zkir.struct @TestComponent18 {
+  func @compute() { return }
+  func @constrain(
+        %a: !zkir.array<3 x index>,
+        %b: !zkir.array<3 x !zkir.felt> // expected-note {{prior use here}}
+        ) {
+    // expected-error@+1 {{use of value '%b' expects different type than prior uses: '!zkir.array<3 x index>' vs '!zkir.array<3 x !zkir.felt>'}}
+    zkir.emit_eq %a, %b : !zkir.array<3 x index>
+    return
+  }
+}
+// -----
+
+// Test: [emit_eq] neither array size matches the type given
+zkir.struct @TestComponent19 {
+  func @compute() { return }
+  func @constrain(
+        %a: !zkir.array<3 x !zkir.felt>, // expected-note {{prior use here}}
+        %b: !zkir.array<3 x !zkir.felt>
+        ) {
+    // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.array<3 x index>' vs '!zkir.array<3 x !zkir.felt>'}}
+    zkir.emit_eq %a, %b : !zkir.array<3 x index>
     return
   }
 }
@@ -155,7 +268,7 @@ module {
     %a = zkir.constfelt 7653
     %b = zkir.constfelt 34572
     // expected-error@+1 {{'zkir.emit_eq' op expects parent op 'zkir.func'}}
-    zkir.emit_eq %a, %b
+    zkir.emit_eq %a, %b : !zkir.felt
 }
 // -----
 
@@ -169,11 +282,25 @@ module {
 }
 // -----
 
-// Test: [emit_eq] outside of a function body
-zkir.struct @Component10 {
+// Test: [emit_eq] attempt to assign to an SSA value but it has no result
+zkir.struct @Component20 {
   func @constrain(%a: !zkir.felt, %b: !zkir.array<5 x !zkir.felt>) {
     // expected-error@+1 {{cannot name an operation with no results}}
     %c = zkir.emit_in %a, %b : !zkir.array<5 x !zkir.felt>
+    return
+  }
+
+  func @compute() {
+    return
+  }
+}
+// -----
+
+// Test: [emit_eq] attempt to assign to an SSA value but it has no result
+zkir.struct @Component21 {
+  func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
+    // expected-error@+1 {{cannot name an operation with no results}}
+    %c = zkir.emit_eq %a, %b : !zkir.felt
     return
   }
 

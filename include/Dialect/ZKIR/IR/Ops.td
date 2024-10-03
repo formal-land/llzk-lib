@@ -190,16 +190,19 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
   let assemblyFormat = "$elements attr-dict `:` type($result)";
 }
 
+def EmitEqType : TypeConstraint<CPred<"::zkir::isValidEmitEqType($_self)">, "non-struct type">;
+
 def ZKIR_EmitEqualityOp : ZKIR_Op<"emit_eq", [
-    HasParent<"::zkir::FuncOp">, Pure, Commutative
+    HasParent<"::zkir::FuncOp">, Pure, Commutative,
+    SameTypeOperands, ElementwiseMappable,
 ]> {
   let summary = "";
   let description = [{}];
 
-  let arguments = (ins ZKIR_FeltType:$lhs, ZKIR_FeltType:$rhs);
+  let arguments = (ins EmitEqType:$lhs, EmitEqType:$rhs);
 
   let assemblyFormat = [{
-    $lhs `,` $rhs attr-dict
+    $lhs `,` $rhs `:` type($rhs) attr-dict
   }];
 
   let hasVerifier = 1;

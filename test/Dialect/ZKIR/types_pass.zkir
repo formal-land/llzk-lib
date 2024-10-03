@@ -19,3 +19,7 @@ zkir.func private @d(%x: !zkir.array<54 x index>) -> index
 zkir.func private @f(!zkir.felt) -> i1
 //CHECK-LABEL:  zkir.func private @f(!zkir.felt) -> i1
 // -----
+
+zkir.func private @g(%x: !zkir.array<2 x !zkir.array<3 x !zkir.array<2 x index>>>)
+//CHECK-LABEL:  zkir.func private @g(!zkir.array<2 x !zkir.array<3 x !zkir.array<2 x index>>>)
+// -----

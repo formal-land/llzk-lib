@@ -2,7 +2,7 @@
 
 zkir.struct @ComponentA {
   func @constrain(%a: !zkir.felt, %b: !zkir.felt) {
-    zkir.emit_eq %a, %b
+    zkir.emit_eq %a, %b : !zkir.felt
     return
   }
 
@@ -12,7 +12,7 @@ zkir.struct @ComponentA {
 }
 //CHECK-LABEL:  zkir.struct @ComponentA {
 //CHECK-NEXT:     func @constrain(%[[A0:[0-9a-zA-Z_\.]+]]: !zkir.felt, %[[A1:[0-9a-zA-Z_\.]+]]: !zkir.felt) {
-//CHECK-NEXT:       emit_eq %[[A0]], %[[A1]]
+//CHECK-NEXT:       emit_eq %[[A0]], %[[A1]] : !zkir.felt
 //CHECK-NEXT:       return
 //CHECK-NEXT:     }
 //CHECK-NEXT:     func @compute() {
