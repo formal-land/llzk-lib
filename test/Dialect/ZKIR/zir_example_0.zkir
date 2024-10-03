@@ -6,10 +6,11 @@ module attributes {veridise.lang = "zkir"} {
     field @low : !zkir.felt
     field @high : !zkir.felt
 
-    func @compute(%self: !zkir.struct<@ValU32>, %low: !zkir.felt, %high: !zkir.felt) {
+    func @compute(%low: !zkir.felt, %high: !zkir.felt) -> !zkir.struct<@ValU32> {
+      %self = new_struct : !zkir.struct<@ValU32>
       writef %self[@low] = %low : !zkir.struct<@ValU32>, !zkir.felt
       writef %self[@high] = %high : !zkir.struct<@ValU32>, !zkir.felt
-      return
+      return %self : !zkir.struct<@ValU32>
     }
 
     func @constrain(%self: !zkir.struct<@ValU32>, %low: !zkir.felt, %high: !zkir.felt) {
@@ -18,12 +19,13 @@ module attributes {veridise.lang = "zkir"} {
   }
 
   zkir.struct @Reg {
-    // ZIR frontend uses `pub` for the return value
+    // ZIR frontend should mark return value with `pub`
     field @reg : !zkir.felt {zkir.pub}
 
-    func @compute(%self: !zkir.struct<@Reg>, %v: !zkir.felt) {
+    func @compute(%v: !zkir.felt) -> !zkir.struct<@Reg> {
+      %self = new_struct : !zkir.struct<@Reg>
       writef %self[@reg] = %v : !zkir.struct<@Reg>, !zkir.felt
-      return
+      return %self : !zkir.struct<@Reg>
     }
 
     func @constrain(%self: !zkir.struct<@Reg>, %v: !zkir.felt) {
@@ -35,10 +37,11 @@ module attributes {veridise.lang = "zkir"} {
 
   zkir.struct @Div {
     field @reciprocal : !zkir.felt
-    // ZIR frontend uses `pub` for the return value
+    // ZIR frontend should mark return value with `pub`
     field @synthetic_return : !zkir.felt {zkir.pub}
 
-    func @compute(%self: !zkir.struct<@Div>, %lhs: !zkir.felt, %rhs: !zkir.felt) {
+    func @compute(%lhs: !zkir.felt, %rhs: !zkir.felt) -> !zkir.struct<@Div> {
+      %self = new_struct : !zkir.struct<@Div>
       // res_inv := inv(rhs);
       %res_inv = inv %rhs
       writef %self[@reciprocal] = %res_inv : !zkir.struct<@Div>, !zkir.felt
@@ -46,7 +49,7 @@ module attributes {veridise.lang = "zkir"} {
       %res_mul = mul %res_inv, %lhs
       writef %self[@synthetic_return] = %res_mul : !zkir.struct<@Div>, !zkir.felt
       //
-      return
+      return %self : !zkir.struct<@Div>
     }
 
     func @constrain(%self: !zkir.struct<@Div>, %lhs: !zkir.felt, %rhs: !zkir.felt) {
@@ -69,10 +72,11 @@ module attributes {veridise.lang = "zkir"} {
 //CHECK-NEXT:    zkir.struct @ValU32 {
 //CHECK-NEXT:      field @low : !zkir.felt
 //CHECK-NEXT:      field @high : !zkir.felt
-//CHECK-NEXT:      func @compute(%arg0: !zkir.struct<@ValU32>, %arg1: !zkir.felt, %arg2: !zkir.felt) {
-//CHECK-NEXT:        writef %arg0[@low] = %arg1 : <@ValU32>, !zkir.felt
-//CHECK-NEXT:        writef %arg0[@high] = %arg2 : <@ValU32>, !zkir.felt
-//CHECK-NEXT:        return
+//CHECK-NEXT:      func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) -> !zkir.struct<@ValU32> {
+//CHECK-NEXT:        %self = new_struct : <@ValU32>
+//CHECK-NEXT:        writef %self[@low] = %arg0 : <@ValU32>, !zkir.felt
+//CHECK-NEXT:        writef %self[@high] = %arg1 : <@ValU32>, !zkir.felt
+//CHECK-NEXT:        return %self : !zkir.struct<@ValU32>
 //CHECK-NEXT:      }
 //CHECK-NEXT:      func @constrain(%arg0: !zkir.struct<@ValU32>, %arg1: !zkir.felt, %arg2: !zkir.felt) {
 //CHECK-NEXT:        return
@@ -80,9 +84,10 @@ module attributes {veridise.lang = "zkir"} {
 //CHECK-NEXT:    }
 //CHECK-NEXT:    zkir.struct @Reg {
 //CHECK-NEXT:      field @reg : !zkir.felt {zkir.pub}
-//CHECK-NEXT:      func @compute(%arg0: !zkir.struct<@Reg>, %arg1: !zkir.felt) {
-//CHECK-NEXT:        writef %arg0[@reg] = %arg1 : <@Reg>, !zkir.felt
-//CHECK-NEXT:        return
+//CHECK-NEXT:      func @compute(%arg0: !zkir.felt) -> !zkir.struct<@Reg> {
+//CHECK-NEXT:        %self = new_struct : <@Reg>
+//CHECK-NEXT:        writef %self[@reg] = %arg0 : <@Reg>, !zkir.felt
+//CHECK-NEXT:        return %self : !zkir.struct<@Reg>
 //CHECK-NEXT:      }
 //CHECK-NEXT:      func @constrain(%arg0: !zkir.struct<@Reg>, %arg1: !zkir.felt) {
 //CHECK-NEXT:        %0 = readf %arg0[@reg] : <@Reg>, !zkir.felt
@@ -93,12 +98,13 @@ module attributes {veridise.lang = "zkir"} {
 //CHECK-NEXT:    zkir.struct @Div {
 //CHECK-NEXT:      field @reciprocal : !zkir.felt
 //CHECK-NEXT:      field @synthetic_return : !zkir.felt {zkir.pub}
-//CHECK-NEXT:      func @compute(%arg0: !zkir.struct<@Div>, %arg1: !zkir.felt, %arg2: !zkir.felt) {
-//CHECK-NEXT:        %0 = inv %arg2
-//CHECK-NEXT:        writef %arg0[@reciprocal] = %0 : <@Div>, !zkir.felt
-//CHECK-NEXT:        %1 = mul %0, %arg1
-//CHECK-NEXT:        writef %arg0[@synthetic_return] = %1 : <@Div>, !zkir.felt
-//CHECK-NEXT:        return
+//CHECK-NEXT:      func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) -> !zkir.struct<@Div> {
+//CHECK-NEXT:        %self = new_struct : <@Div>
+//CHECK-NEXT:        %0 = inv %arg1
+//CHECK-NEXT:        writef %self[@reciprocal] = %0 : <@Div>, !zkir.felt
+//CHECK-NEXT:        %1 = mul %0, %arg0
+//CHECK-NEXT:        writef %self[@synthetic_return] = %1 : <@Div>, !zkir.felt
+//CHECK-NEXT:        return %self : !zkir.struct<@Div>
 //CHECK-NEXT:      }
 //CHECK-NEXT:      func @constrain(%arg0: !zkir.struct<@Div>, %arg1: !zkir.felt, %arg2: !zkir.felt) {
 //CHECK-NEXT:        %0 = readf %arg0[@reciprocal] : <@Div>, !zkir.felt

@@ -8,10 +8,11 @@ module attributes {veridise.lang = "zkir"} {
   zkir.struct @ValU32 {
     field @low : !zkir.felt
     field @high : !zkir.felt
-    func @compute(%self: !zkir.struct<@ValU32>, %low: !zkir.felt, %high: !zkir.felt) {
+    func @compute(%low: !zkir.felt, %high: !zkir.felt) -> !zkir.struct<@ValU32> {
+      %self = new_struct : !zkir.struct<@ValU32>
       writef %self[@low] = %low : !zkir.struct<@ValU32>, !zkir.felt
       writef %self[@high] = %high : !zkir.struct<@ValU32>, !zkir.felt
-      return
+      return %self : !zkir.struct<@ValU32>
     }
     func @constrain(%self: !zkir.struct<@ValU32>, %low: !zkir.felt, %high: !zkir.felt) {
       return
@@ -19,9 +20,10 @@ module attributes {veridise.lang = "zkir"} {
   }
   zkir.struct @Reg {
     field @reg : !zkir.felt {zkir.pub}
-    func @compute(%self: !zkir.struct<@Reg>, %v: !zkir.felt) {
+    func @compute(%v: !zkir.felt) -> !zkir.struct<@Reg> {
+      %self = new_struct : !zkir.struct<@Reg>
       writef %self[@reg] = %v : !zkir.struct<@Reg>, !zkir.felt
-      return
+      return %self : !zkir.struct<@Reg>
     }
     func @constrain(%self: !zkir.struct<@Reg>, %v: !zkir.felt) {
       %0 = readf %self[@reg] : !zkir.struct<@Reg>, !zkir.felt
@@ -35,11 +37,12 @@ module attributes {veridise.lang = "zkir"} {
   zkir.struct @C1 {
     field @z : !zkir.struct<@Reg> {zkir.pub}
 
-    func @compute(%self: !zkir.struct<@C1>, %x: !zkir.felt, %y: !zkir.felt) {
-      %reg_0 = readf %self[@z] : !zkir.struct<@C1>, !zkir.struct<@Reg>
+    func @compute(%x: !zkir.felt, %y: !zkir.felt) -> !zkir.struct<@C1> {
+      %self = new_struct : !zkir.struct<@C1>
       %add_0 = add %x, %y
-      call @Reg::@compute(%reg_0, %add_0) : (!zkir.struct<@Reg>, !zkir.felt) -> ()
-      return
+      %reg_0 = call @Reg::@compute(%add_0) : (!zkir.felt) -> (!zkir.struct<@Reg>)
+      writef %self[@z] = %reg_0 : !zkir.struct<@C1>, !zkir.struct<@Reg>
+      return %self: !zkir.struct<@C1>
     }
 
     func @constrain(%self: !zkir.struct<@C1>, %x: !zkir.felt, %y: !zkir.felt) {
@@ -53,13 +56,14 @@ module attributes {veridise.lang = "zkir"} {
   zkir.struct @C2 {
     field @fc1 : !zkir.struct<@C1>
 
-    func @compute(%self: !zkir.struct<@C2>, %x: !zkir.struct<@ValU32>) {
-      %t0 = readf %self[@fc1] : !zkir.struct<@C2>, !zkir.struct<@C1>
+    func @compute(%x: !zkir.struct<@ValU32>) -> !zkir.struct<@C2> {
+      %self = new_struct : !zkir.struct<@C2>
       %t1 = readf %x[@low] : !zkir.struct<@ValU32>, !zkir.felt
       %t2 = readf %x[@high] : !zkir.struct<@ValU32>, !zkir.felt
-      call @C1::@compute(%t0, %t1, %t2) : (!zkir.struct<@C1>, !zkir.felt, !zkir.felt) -> ()
+      %t0 = call @C1::@compute(%t1, %t2) : (!zkir.felt, !zkir.felt) -> (!zkir.struct<@C1>)
+      writef %self[@fc1] = %t0 : !zkir.struct<@C2>, !zkir.struct<@C1>
       //
-      return
+      return %self: !zkir.struct<@C2>
     }
 
     func @constrain(%self: !zkir.struct<@C2>, %x: !zkir.struct<@ValU32>) {
@@ -67,7 +71,7 @@ module attributes {veridise.lang = "zkir"} {
       %t0 = readf %self[@fc1] : !zkir.struct<@C2>, !zkir.struct<@C1>
       %t1 = readf %x[@low] : !zkir.struct<@ValU32>, !zkir.felt
       %t2 = readf %x[@high] : !zkir.struct<@ValU32>, !zkir.felt
-      call @C1::@compute(%t0, %t1, %t2) : (!zkir.struct<@C1>, !zkir.felt, !zkir.felt) -> ()
+      call @C1::@constrain(%t0, %t1, %t2) : (!zkir.struct<@C1>, !zkir.felt, !zkir.felt) -> ()
       // emit c1.z.reg = 0
       %t3 = readf %t0[@z] : !zkir.struct<@C1>, !zkir.struct<@Reg>
       %t4 = readf %t3[@reg] : !zkir.struct<@Reg>, !zkir.felt
@@ -77,17 +81,17 @@ module attributes {veridise.lang = "zkir"} {
       return
     }
   }
-
 }
 
-//CHECK-LABEL:  module attributes {veridise.lang = "zkir"} {
+//CHECK-LABEL: module attributes {veridise.lang = "zkir"} {
 //CHECK-NEXT:    zkir.struct @ValU32 {
 //CHECK-NEXT:      field @low : !zkir.felt
 //CHECK-NEXT:      field @high : !zkir.felt
-//CHECK-NEXT:      func @compute(%arg0: !zkir.struct<@ValU32>, %arg1: !zkir.felt, %arg2: !zkir.felt) {
-//CHECK-NEXT:        writef %arg0[@low] = %arg1 : <@ValU32>, !zkir.felt
-//CHECK-NEXT:        writef %arg0[@high] = %arg2 : <@ValU32>, !zkir.felt
-//CHECK-NEXT:        return
+//CHECK-NEXT:      func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) -> !zkir.struct<@ValU32> {
+//CHECK-NEXT:        %self = new_struct : <@ValU32>
+//CHECK-NEXT:        writef %self[@low] = %arg0 : <@ValU32>, !zkir.felt
+//CHECK-NEXT:        writef %self[@high] = %arg1 : <@ValU32>, !zkir.felt
+//CHECK-NEXT:        return %self : !zkir.struct<@ValU32>
 //CHECK-NEXT:      }
 //CHECK-NEXT:      func @constrain(%arg0: !zkir.struct<@ValU32>, %arg1: !zkir.felt, %arg2: !zkir.felt) {
 //CHECK-NEXT:        return
@@ -95,9 +99,10 @@ module attributes {veridise.lang = "zkir"} {
 //CHECK-NEXT:    }
 //CHECK-NEXT:    zkir.struct @Reg {
 //CHECK-NEXT:      field @reg : !zkir.felt {zkir.pub}
-//CHECK-NEXT:      func @compute(%arg0: !zkir.struct<@Reg>, %arg1: !zkir.felt) {
-//CHECK-NEXT:        writef %arg0[@reg] = %arg1 : <@Reg>, !zkir.felt
-//CHECK-NEXT:        return
+//CHECK-NEXT:      func @compute(%arg0: !zkir.felt) -> !zkir.struct<@Reg> {
+//CHECK-NEXT:        %self = new_struct : <@Reg>
+//CHECK-NEXT:        writef %self[@reg] = %arg0 : <@Reg>, !zkir.felt
+//CHECK-NEXT:        return %self : !zkir.struct<@Reg>
 //CHECK-NEXT:      }
 //CHECK-NEXT:      func @constrain(%arg0: !zkir.struct<@Reg>, %arg1: !zkir.felt) {
 //CHECK-NEXT:        %0 = readf %arg0[@reg] : <@Reg>, !zkir.felt
@@ -107,11 +112,12 @@ module attributes {veridise.lang = "zkir"} {
 //CHECK-NEXT:    }
 //CHECK-NEXT:    zkir.struct @C1 {
 //CHECK-NEXT:      field @z : !zkir.struct<@Reg> {zkir.pub}
-//CHECK-NEXT:      func @compute(%arg0: !zkir.struct<@C1>, %arg1: !zkir.felt, %arg2: !zkir.felt) {
-//CHECK-NEXT:        %0 = readf %arg0[@z] : <@C1>, !zkir.struct<@Reg>
-//CHECK-NEXT:        %1 = add %arg1, %arg2
-//CHECK-NEXT:        call @Reg::@compute(%0, %1) : (!zkir.struct<@Reg>, !zkir.felt) -> ()
-//CHECK-NEXT:        return
+//CHECK-NEXT:      func @compute(%arg0: !zkir.felt, %arg1: !zkir.felt) -> !zkir.struct<@C1> {
+//CHECK-NEXT:        %self = new_struct : <@C1>
+//CHECK-NEXT:        %0 = add %arg0, %arg1
+//CHECK-NEXT:        %1 = call @Reg::@compute(%0) : (!zkir.felt) -> !zkir.struct<@Reg>
+//CHECK-NEXT:        writef %self[@z] = %1 : <@C1>, !zkir.struct<@Reg>
+//CHECK-NEXT:        return %self : !zkir.struct<@C1>
 //CHECK-NEXT:      }
 //CHECK-NEXT:      func @constrain(%arg0: !zkir.struct<@C1>, %arg1: !zkir.felt, %arg2: !zkir.felt) {
 //CHECK-NEXT:        %0 = readf %arg0[@z] : <@C1>, !zkir.struct<@Reg>
@@ -122,18 +128,19 @@ module attributes {veridise.lang = "zkir"} {
 //CHECK-NEXT:    }
 //CHECK-NEXT:    zkir.struct @C2 {
 //CHECK-NEXT:      field @fc1 : !zkir.struct<@C1>
-//CHECK-NEXT:      func @compute(%arg0: !zkir.struct<@C2>, %arg1: !zkir.struct<@ValU32>) {
-//CHECK-NEXT:        %0 = readf %arg0[@fc1] : <@C2>, !zkir.struct<@C1>
-//CHECK-NEXT:        %1 = readf %arg1[@low] : <@ValU32>, !zkir.felt
-//CHECK-NEXT:        %2 = readf %arg1[@high] : <@ValU32>, !zkir.felt
-//CHECK-NEXT:        call @C1::@compute(%0, %1, %2) : (!zkir.struct<@C1>, !zkir.felt, !zkir.felt) -> ()
-//CHECK-NEXT:        return
+//CHECK-NEXT:      func @compute(%arg0: !zkir.struct<@ValU32>) -> !zkir.struct<@C2> {
+//CHECK-NEXT:        %self = new_struct : <@C2>
+//CHECK-NEXT:        %0 = readf %arg0[@low] : <@ValU32>, !zkir.felt
+//CHECK-NEXT:        %1 = readf %arg0[@high] : <@ValU32>, !zkir.felt
+//CHECK-NEXT:        %2 = call @C1::@compute(%0, %1) : (!zkir.felt, !zkir.felt) -> !zkir.struct<@C1>
+//CHECK-NEXT:        writef %self[@fc1] = %2 : <@C2>, !zkir.struct<@C1>
+//CHECK-NEXT:        return %self : !zkir.struct<@C2>
 //CHECK-NEXT:      }
 //CHECK-NEXT:      func @constrain(%arg0: !zkir.struct<@C2>, %arg1: !zkir.struct<@ValU32>) {
 //CHECK-NEXT:        %0 = readf %arg0[@fc1] : <@C2>, !zkir.struct<@C1>
 //CHECK-NEXT:        %1 = readf %arg1[@low] : <@ValU32>, !zkir.felt
 //CHECK-NEXT:        %2 = readf %arg1[@high] : <@ValU32>, !zkir.felt
-//CHECK-NEXT:        call @C1::@compute(%0, %1, %2) : (!zkir.struct<@C1>, !zkir.felt, !zkir.felt) -> ()
+//CHECK-NEXT:        call @C1::@constrain(%0, %1, %2) : (!zkir.struct<@C1>, !zkir.felt, !zkir.felt) -> ()
 //CHECK-NEXT:        %3 = readf %0[@z] : <@C1>, !zkir.struct<@Reg>
 //CHECK-NEXT:        %4 = readf %3[@reg] : <@Reg>, !zkir.felt
 //CHECK-NEXT:        %felt_const_0 = constfelt  0
