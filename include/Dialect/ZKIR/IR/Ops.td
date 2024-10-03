@@ -33,11 +33,17 @@ def ZKIR_StructDefOp : ZKIR_Op<"struct", [
 
       ```zkir
       zkir.struct @ComponentA {
-        func public @compute(%a: !zkir.felt) {
-          return
+        field @f1 : !zkir.array<5 x index>
+        field @f2 : !zkir.felt {zkir.pub}
+
+        func @compute(%p: !zkir.felt) -> !zkir.struct<@ComponentA> {
+          %self = new_struct : !zkir.struct<@ComponentA>
+          // initialize all fields of `%self` here
+          return %self : !zkir.struct<@ComponentA>
         }
 
-        func public @constrain(%a: !zkir.felt) {
+        func @constrain(%self: !zkir.struct<@ComponentA>, %p: !zkir.felt) {
+          // emit constraints here
           return
         }
       }
