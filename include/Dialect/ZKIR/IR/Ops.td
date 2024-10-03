@@ -327,8 +327,8 @@ def ZKIR_CmpOp : ZKIR_Op<"cmp", [Pure]> {
     according to the comparison predicate and returns an `i1`. The following
     comparisons are supported:
 
-    -   `eq`:  equal
-    -   `ne`:  not equal
+    -   `eq`: equal
+    -   `ne`: not equal
     -   `lt`: less than
     -   `le`: less than or equal
     -   `gt`: greater than
