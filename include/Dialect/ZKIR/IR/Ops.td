@@ -336,6 +336,10 @@ def ZKIR_CmpOp : ZKIR_Op<"cmp", [Pure]> {
 
     The result is `1` if the comparison is true and `0` otherwise.
 
+    The inequality operators (lt, gt, le, ge) for the finite field elements
+    are defined by treating the field elements as integer values:
+        `f1 op f2` iff `int(f1) op int(f2)`
+
     Example:
 
     ```zkir
