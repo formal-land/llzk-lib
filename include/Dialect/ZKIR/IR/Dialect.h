@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mlir/Dialect/Index/IR/IndexDialect.h>
 #include <mlir/IR/Dialect.h>
 
 // Include TableGen'd files

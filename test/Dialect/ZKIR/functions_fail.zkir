@@ -1,0 +1,24 @@
+// RUN: zkir-opt -split-input-file -verify-diagnostics %s
+
+// expected-error@+1 {{'zkir.func' op expected a valid ZKIR type but found 'i32'}}
+zkir.func private @fail_01(i32)
+// -----
+// expected-error@+1 {{'zkir.func' op expected a valid ZKIR type but found 'i32'}}
+zkir.func private @fail_02(i1) -> i32
+// -----
+// expected-error@+1 {{'zkir.func' op expected a valid ZKIR type but found 'i32'}}
+zkir.func private @fail_03(i1) -> (i32, i32)
+// -----
+// expected-error@+1 {{'zkir.func' op expected a valid ZKIR type but found 'i32'}}
+zkir.func private @fail_04(i1, index, i32)
+// -----
+// expected-error@+1 {{'zkir.func' op expected a valid ZKIR type but found 'none'}}
+zkir.func @fail_05(%x: i1) -> none {
+  return
+}
+// -----
+// expected-error@+1 {{'zkir.func' op expected a valid ZKIR type but found '(i1) -> i32'}}
+zkir.func @fail_06(%x: (i1) -> i32) -> index {
+  return
+}
+// -----

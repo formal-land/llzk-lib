@@ -1,0 +1,19 @@
+// RUN: zkir-opt -split-input-file -verify-diagnostics %s
+
+zkir.func private @a()
+// expected-error@+1 {{failed to parse ZKIR_ArrayType parameter 'numElements' which is to be a `uint64_t`}}
+zkir.func private @b(%x: !zkir.array<@a x !zkir.felt>) // expected-error {{expected integer value}}
+// -----
+
+// expected-error@+1 {{failed to parse ZKIR_ArrayType parameter 'numElements' which is to be a `uint64_t`}}
+zkir.func private @c(%x: !zkir.array<index x i256>) // expected-error {{expected integer value}}
+// -----
+
+// expected-error@+1 {{expected a valid ZKIR type but found 'i256'}}
+zkir.func private @d(%x: !zkir.array<5 x i256>)
+// -----
+
+// expected-error@+2 {{expected a valid ZKIR type but found 'i256'}}
+// expected-error@+1 {{failed to parse ZKIR_ArrayType parameter 'elementType' which is to be a `::mlir::Type`}}
+zkir.func private @f(%x: !zkir.array<2 x !zkir.array<3 x !zkir.array<2 x i256>>>)
+// -----

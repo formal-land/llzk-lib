@@ -4,6 +4,8 @@ cmake-build-*/
 # Nix
 /result
 /outputs
+/out
+*.profraw
 
 # Manual build setup
 /third-party/llvm-project
