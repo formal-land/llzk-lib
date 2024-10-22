@@ -217,8 +217,8 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
 def EmitEqType : TypeConstraint<CPred<"::zkir::isValidEmitEqType($_self)">, "non-struct type">;
 
 def ZKIR_EmitEqualityOp : ZKIR_Op<"emit_eq", [
-    HasParent<"::zkir::FuncOp">, Pure, Commutative,
-    SameTypeOperands, ElementwiseMappable,
+    InStruct, InFunctionWithName<"::zkir::FUNC_NAME_CONSTRAIN">,
+    Pure, Commutative, SameTypeOperands, ElementwiseMappable,
 ]> {
   let summary = "";
   let description = [{}];
@@ -228,12 +228,10 @@ def ZKIR_EmitEqualityOp : ZKIR_Op<"emit_eq", [
   let assemblyFormat = [{
     $lhs `,` $rhs `:` type($rhs) attr-dict
   }];
-
-  let hasVerifier = 1;
 }
 
 def ZKIR_EmitContainmentOp : ZKIR_Op<"emit_in", [
-    HasParent<"::zkir::FuncOp">, Pure,
+    InStruct, InFunctionWithName<"::zkir::FUNC_NAME_CONSTRAIN">, Pure,
     TypesMatchWith<"lhs type matches rhs element type", "rhs", "lhs", 
                    "::llvm::cast<::zkir::ArrayType>($_self).getElementType()">
 ]> {
@@ -245,8 +243,6 @@ def ZKIR_EmitContainmentOp : ZKIR_Op<"emit_in", [
   let assemblyFormat = [{
     $lhs `,` $rhs `:` type($rhs) attr-dict
   }];
-
-  let hasVerifier = 1;
 }
 
 // -----

@@ -16,6 +16,22 @@
 
 namespace zkir {
 
+mlir::FailureOr<llvm::StringRef> getParentStructName(mlir::Operation *op) {
+  if (zkir::StructDefOp sDef = op->getParentOfType<zkir::StructDefOp>()) {
+    return sDef.getSymName();
+  } else {
+    return mlir::failure();
+  }
+}
+
+mlir::FailureOr<llvm::StringRef> getParentFuncName(mlir::Operation *op) {
+  if (zkir::FuncOp func = op->getParentOfType<zkir::FuncOp>()) {
+    return func.getSymName();
+  } else {
+    return mlir::failure();
+  }
+}
+
 // -----
 // StructDefOp
 // -----
@@ -41,14 +57,14 @@ mlir::LogicalResult StructDefOp::verifyRegions() {
     if (!llvm::isa<FieldDefOp>(op)) {
       if (auto func_def = llvm::dyn_cast<::zkir::FuncOp>(op)) {
         auto func_name = func_def.getSymName();
-        if ("compute" == func_name) {
+        if (zkir::FUNC_NAME_COMPUTE == func_name) {
           if (foundCompute) {
-            return msgOneFunction({emitError}, "compute");
+            return msgOneFunction({emitError}, zkir::FUNC_NAME_COMPUTE);
           }
           foundCompute = true;
-        } else if ("constrain" == func_name) {
+        } else if (zkir::FUNC_NAME_CONSTRAIN == func_name) {
           if (foundConstrain) {
-            return msgOneFunction({emitError}, "constrain");
+            return msgOneFunction({emitError}, zkir::FUNC_NAME_CONSTRAIN);
           }
           foundConstrain = true;
         } else {
@@ -65,9 +81,9 @@ mlir::LogicalResult StructDefOp::verifyRegions() {
     }
   }
   if (!foundCompute) {
-    return msgOneFunction({emitError}, "compute");
+    return msgOneFunction({emitError}, zkir::FUNC_NAME_COMPUTE);
   } else if (!foundConstrain) {
-    return msgOneFunction({emitError}, "constrain");
+    return msgOneFunction({emitError}, zkir::FUNC_NAME_CONSTRAIN);
   }
 
   return mlir::success();
@@ -192,27 +208,5 @@ void CreateArrayOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
 void CreateStructOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
   setNameFn(getResult(), "self");
 }
-
-// -----
-// Emit*Op
-// -----
-
-namespace {
-
-inline mlir::LogicalResult verifyEmitOp(Operation *op) {
-  // No need for dyn_cast due to HasParent<"::zkir::FuncOp"> trait
-  auto func_name = llvm::cast<::zkir::FuncOp>(op->getParentOp()).getSymName();
-  if ("constrain" == func_name) {
-    return mlir::success();
-  } else {
-    return op->emitOpError() << "'emit' operation is only allowed within 'constrain' functions.";
-  }
-}
-
-} // namespace
-
-mlir::LogicalResult EmitEqualityOp::verify() { return verifyEmitOp(getOperation()); }
-
-mlir::LogicalResult EmitContainmentOp::verify() { return verifyEmitOp(getOperation()); }
 
 } // namespace zkir
