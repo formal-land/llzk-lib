@@ -15,9 +15,8 @@ class ZKIR_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
-def AnyZKIRType : Type<
-    CPred<"::zkir::isValidZkirType($_self)">,
-    "a valid ZKIR type", "::mlir::Type">;
+def AnyZKIRType : Type<CPred<"::zkir::isValidZkirType($_self)">,
+                       "a valid ZKIR type", "::mlir::Type">;
 
 def ZKIR_FeltType : ZKIR_Type<"Felt", "felt"> {
   let summary = "finite field element";
@@ -34,15 +33,15 @@ def ZKIR_StructType : ZKIR_Type<"Struct", "struct"> {
   let summary = "circuit component";
   let description = [{}];
 
-  let parameters = (ins "::mlir::FlatSymbolRefAttr":$name);
+  let parameters = (ins "::mlir::SymbolRefAttr":$name);
   let assemblyFormat = [{ `<` $name `>` }];
 
   let extraClassDeclaration = [{
     /// Gets the `struct` op that defines this struct. Provided `op` is
     /// used as a starting point for the lookup. Should not be assumed to
     /// be non-`null` as we don't verify all types during verification.
-    StructDefOp getDefinition(::mlir::SymbolTableCollection &symbolTable, ::mlir::Operation *op);
-  
+    ::mlir::FailureOr<StructDefOp> getDefinition(::mlir::SymbolTableCollection &symbolTable, ::mlir::Operation *op);
+
     // Verifies that this type references a valid struct, relative to the given `op`.
     ::mlir::LogicalResult verifySymbol(::mlir::SymbolTableCollection &symbolTable, ::mlir::Operation *op);
   }];
@@ -50,7 +49,8 @@ def ZKIR_StructType : ZKIR_Type<"Struct", "struct"> {
 
 def ZKIR_ArrayType : ZKIR_Type<"Array", "array"> {
   let summary = "array";
-  let description = [{array type with a static size and homogeneous element type}];
+  let description =
+      [{array type with a static size and homogeneous element type}];
 
   let parameters = (ins "::mlir::Type":$elementType, "uint64_t":$numElements);
   let assemblyFormat = [{
