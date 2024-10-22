@@ -189,6 +189,10 @@ def ZKIR_CreateStructOp : ZKIR_Op<"new_struct", [
   let assemblyFormat = "attr-dict `:` type($result)";
 }
 
+// -----
+// Array operations
+// -----
+
 def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
     Pure,
@@ -199,12 +203,15 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
 ]> {
   let summary = "creates an array";
   let description = [{
-    This operation creates a new array with a given elements.
+    This operation creates a new array with the given elements.
+    The arguments are passed as a flat array but get arranged
+    according the shape declared in the type.
 
-    Example:
+    Examples:
 
     ```zkir
     %0 = zkir.new_array %a, %b, %c : !zkir.array<3 x !zkir.felt>
+    %1 = zkir.new_array %a, %b, %c, %d : !zkir.array<2x2 x !zkir.felt>
     ```
   }];
 
@@ -213,6 +220,84 @@ def ZKIR_CreateArrayOp : ZKIR_Op<"new_array", [
 
   let assemblyFormat = "$elements attr-dict `:` type($result)";
 }
+
+def ZKIR_ReadArrayOp : ZKIR_Op<"readarr", [
+   TypesMatchWith<"result types match with array content",
+                 "lvalue", "result", "::llvm::cast<::zkir::ArrayType>($_self).getElementType()">
+]> {
+  let summary = "Loads a value from a ZKIR array";
+  let description = [{
+    This operation loads the value from an array at position `$index`.
+
+    Exampl̀e of 1-dimensional array:
+    ```zkir 
+    %i = index.constant 0
+    %0 = zkir.new_array %a, %b, %c : !zkir.array<3 x !zkir.felt>
+    // %1 is now equal to %a
+    %1 = zkir.readarr %0[%i] : !zkir.array<3 x !zkir.felt>, !zkir.felt
+    ```
+    
+    Exampl̀e of 3-dimensional array:
+    ```zkir 
+    %i = index.constant 0
+    %j = index.constant 1
+    %k = index.constant 4
+    %0 = zkir.new_array ... : !zkir.array<3x10x15 x !zkir.felt>
+    // %1 is now equal to %a
+    %1 = zkir.readarr %0[%i, %j, %k] : !zkir.array<3x10x15 x !zkir.felt>, !zkir.felt
+    ```
+  }];
+
+  let arguments = (ins ZKIR_ArrayType:$lvalue, Variadic<Index>:$indices);
+  let results = (outs AnyZKIRType:$result);
+
+  let assemblyFormat = [{
+    $lvalue `[` $indices `]` attr-dict `:` type($lvalue) `,` type($result)
+  }];
+}
+
+def ZKIR_WriteArrayOp : ZKIR_Op<"writearr", [
+   TypesMatchWith<"rvalue types match with array content",
+                 "lvalue", "rvalue", "::llvm::cast<::zkir::ArrayType>($_self).getElementType()">
+]> {
+  let summary = "Writes a value into a ZKIR array";
+  let description = [{
+    This operation writes a value into an array at position `$index`.
+
+    Exampl̀e of 1-dimensional array:
+
+    ```zkir 
+    %i = index.constant 0
+    %0 = zkir.constfelt 42
+    %1 = zkir.new_array %a, %b, %c : !zkir.array<3 x !zkir.felt>
+    // The array now is [%0, %b, %c]
+    zkir.writearr %1[%i] = %0 : !zkir.array<3 x !zkir.felt>, !zkir.felt
+    ```
+
+    Exampl̀e of 2-dimensional array:
+
+    ```zkir 
+    %i = index.constant 0
+    %j = index.constant 0
+    %0 = zkir.constfelt 42
+    %1 = zkir.new_array %a, %b, %c, %d : !zkir.array<2x2 x !zkir.felt>
+    // The array now is [[%0, %b], [%c, %d]]
+    zkir.writearr %1[%i, %j] = %0 : !zkir.array<2x2 x !zkir.felt>, !zkir.felt
+    ```
+
+  }];
+
+  let arguments = (ins ZKIR_ArrayType:$lvalue, Variadic<Index>:$indices, AnyZKIRType:$rvalue);
+
+  let assemblyFormat = [{
+    $lvalue `[` $indices `]` `=` $rvalue attr-dict `:` type($lvalue) `,` type($rvalue)
+  }];
+}
+
+// -----
+// Constraint emit operations
+// -----
+
 
 def EmitEqType : TypeConstraint<CPred<"::zkir::isValidEmitEqType($_self)">, "non-struct type">;
 

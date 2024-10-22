@@ -20,25 +20,6 @@ zkir.func @param_scalar_mismatch(
 
 // -----
 
-zkir.func @arr_size_mismatch(%a: !zkir.array<3 x index>) {
-  %c = index.constant 23435643245
-  %b = zkir.new_array %c: !zkir.array<1 x index> // expected-note {{prior use here}}
-  // expected-error@+1 {{use of value '%b' expects different type than prior uses: '!zkir.array<3 x index>' vs '!zkir.array<1 x index>'}}
-  %r = zkir.new_array %a, %b: !zkir.array<2 x !zkir.array<3 x index>>
-}
-
-// -----
-
-zkir.func @arr_type_mismatch(
-      %a: !zkir.array<3 x index>,
-      %b: !zkir.array<3 x !zkir.felt> // expected-note {{prior use here}}
-      ) {
-  // expected-error@+1 {{use of value '%b' expects different type than prior uses: '!zkir.array<3 x index>' vs '!zkir.array<3 x !zkir.felt>'}}
-  %r = zkir.new_array %a, %b: !zkir.array<2 x !zkir.array<3 x index>>
-}
-
-// -----
-
 zkir.func @mismatch_to_type_attr(
       %a: !zkir.array<3 x index>, // expected-note {{prior use here}}
       %b: !zkir.felt
@@ -46,16 +27,6 @@ zkir.func @mismatch_to_type_attr(
   %c = index.constant 324
   // expected-error@+1 {{use of value '%a' expects different type than prior uses: 'index' vs '!zkir.array<3 x index>'}}
   %r = zkir.new_array %a, %b, %c: !zkir.array<3 x index>
-}
-
-// -----
-
-zkir.func @inner_array_type_mismatch_to_type_attr(
-      %a: !zkir.array<3 x !zkir.felt>, // expected-note {{prior use here}}
-      %b: !zkir.array<3 x !zkir.felt>
-      ) {
-  // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.array<3 x index>' vs '!zkir.array<3 x !zkir.felt>'}}
-  %r = zkir.new_array %a, %b: !zkir.array<2 x !zkir.array<3 x index>>
 }
 
 // -----
@@ -69,12 +40,20 @@ zkir.func @mismatch_to_type_attr_size() {
 
 // -----
 
-zkir.func @inner_array_type_mismatch_to_type_attr_size(
-      %a: !zkir.array<3 x index>, // expected-note {{prior use here}}
-      %b: !zkir.array<3 x index>
-      ) {
-  // expected-error@+1 {{use of value '%a' expects different type than prior uses: '!zkir.array<233 x index>' vs '!zkir.array<3 x index>'}}
-  %r = zkir.new_array %a, %b: !zkir.array<2 x !zkir.array<233 x index>>
+zkir.func @multi_array_not_enough_values(%a: index, %b: index) -> !zkir.array<2x2 x index> {
+  %c = index.constant 324
+  // expected-error@+1 {{custom op 'zkir.new_array' 3 operands present, but expected 4}}
+  %r = zkir.new_array %a, %b, %c: !zkir.array<2x2 x index>
+  return %r: !zkir.array<2x2 x index>
 }
+// -----
 
+zkir.func @multi_array_too_many_values(%a: index, %b: index) -> !zkir.array<2x2 x index> {
+  %c = index.constant 324
+  %d = index.constant 999
+  %e = index.constant 879
+  // expected-error@+1 {{custom op 'zkir.new_array' 5 operands present, but expected 4}}
+  %r = zkir.new_array %a, %b, %c, %d, %e: !zkir.array<2x2 x index>
+  return %r: !zkir.array<2x2 x index>
+}
 // -----
