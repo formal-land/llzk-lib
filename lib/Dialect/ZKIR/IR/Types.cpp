@@ -1,9 +1,11 @@
 #include "Dialect/ZKIR/IR/Types.h"
 #include "Dialect/ZKIR/IR/Ops.h"
 #include "Dialect/ZKIR/Util/SymbolHelper.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
-#include "llvm/ADT/SmallVector.h"
+
+#include <mlir/IR/BuiltinTypeInterfaces.h>
 #include <mlir/Support/LogicalResult.h>
+
+#include <llvm/ADT/SmallVector.h>
 
 namespace zkir {
 
@@ -33,7 +35,8 @@ mlir::FailureOr<StructDefOp>
 StructType::getDefinition(mlir::SymbolTableCollection &symbolTable, mlir::Operation *op) {
   mlir::FailureOr<StructDefOp> def = lookupTopLevelSymbol<StructDefOp>(symbolTable, op, getName());
   if (mlir::failed(def)) {
-    return op->emitError() << "no struct named \"" << getName() << "\"";
+    return op->emitError() << "no '" << StructDefOp::getOperationName() << "' named \"" << getName()
+                           << "\"";
   } else {
     return def;
   }

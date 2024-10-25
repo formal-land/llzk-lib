@@ -165,27 +165,6 @@ bool FuncOp::hasArgPublicAttr(unsigned index) {
   }
 }
 
-namespace {
-
-inline mlir::InFlightDiagnostic computeRetErr(FuncOp &func, StructDefOp &expected) {
-  mlir::FailureOr<mlir::SymbolRefAttr> pathToExpected = getPathFromRoot(expected);
-  if (mlir::succeeded(pathToExpected)) {
-    return func.getOperation()->emitOpError().append(
-        "\"", zkir::FUNC_NAME_COMPUTE, "\" must return type of its parent 'zkir.struct': \"",
-        pathToExpected.value(), "\""
-    );
-  } else {
-    // When there is a failure trying to get the resolved name of the struct,
-    //  just print its symbol name directly.
-    return func.getOperation()->emitOpError().append(
-        "\"", zkir::FUNC_NAME_COMPUTE, "\" must return type of its parent 'zkir.struct': \"",
-        expected.getSymName(), "\""
-    );
-  }
-}
-
-} // namespace
-
 mlir::LogicalResult FuncOp::verify() {
   auto emitErrorFunc = [op = this->getOperation()]() -> mlir::InFlightDiagnostic {
     return op->emitOpError();
@@ -207,46 +186,96 @@ mlir::LogicalResult FuncOp::verify() {
   return mlir::success();
 }
 
+namespace {
+
+mlir::InFlightDiagnostic genCompareErr(StructDefOp &expected, FuncOp &origin, const char *aspect) {
+  mlir::FailureOr<mlir::SymbolRefAttr> pathToExpected = getPathFromRoot(expected);
+  if (mlir::succeeded(pathToExpected)) {
+    return origin.emitOpError().append(
+        "\"@", origin.getSymName(), "\" must use type of its parent '",
+        StructDefOp::getOperationName(), "' \"", pathToExpected.value(), "\" as ", aspect, " type"
+    );
+  } else {
+    // When there is a failure trying to get the resolved name of the struct,
+    //  just print its symbol name directly.
+    return origin.emitOpError().append(
+        "\"@", origin.getSymName(), "\" must use type of its parent '",
+        StructDefOp::getOperationName(), "' \"@", expected.getSymName(), "\" as ", aspect, " type"
+    );
+  }
+}
+
+mlir::LogicalResult compareTypes(
+    SymbolTableCollection &symbolTable, StructDefOp &expectedStruct, const mlir::Type &actualType,
+    FuncOp &origin, const char *aspect
+) {
+  if (StructType sType = llvm::dyn_cast<StructType>(actualType)) {
+    mlir::FailureOr<StructDefOp> actualStructOpt =
+        lookupTopLevelSymbol<StructDefOp>(symbolTable, origin, sType.getName());
+    if (mlir::failed(actualStructOpt)) {
+      return origin.emitError().append(
+          "could not find '", StructDefOp::getOperationName(), "' named \"", sType.getName(), "\""
+      );
+    }
+    StructDefOp actualStruct = actualStructOpt.value();
+    if (actualStruct != expectedStruct) {
+      return genCompareErr(expectedStruct, origin, aspect)
+          .attachNote(actualStruct.getLoc())
+          .append("uses this type instead");
+    }
+  } else {
+    return genCompareErr(expectedStruct, origin, aspect);
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult verifyFuncTypeCompute(
+    FuncOp &origin, SymbolTableCollection &symbolTable, StructDefOp &parentStruct
+) {
+  llvm::ArrayRef<mlir::Type> resTypes = origin.getFunctionType().getResults();
+  // Must return type of parent struct
+  if (resTypes.size() != 1) {
+    return origin.emitOpError().append(
+        "\"@", zkir::FUNC_NAME_COMPUTE, "\" must have exactly one return type"
+    );
+  }
+
+  // Lookup the return type StructDefOp and ensure it matches the parent StructDefOp of the
+  // current operation.
+  return compareTypes(symbolTable, parentStruct, resTypes.front(), origin, "return");
+}
+
+mlir::LogicalResult verifyFuncTypeConstrain(
+    FuncOp &origin, SymbolTableCollection &symbolTable, StructDefOp &parentStruct
+) {
+  mlir::FunctionType funcType = origin.getFunctionType();
+  llvm::ArrayRef<mlir::Type> resTypes = funcType.getResults();
+  // Must return '()' type, i.e. have no return types
+  if (resTypes.size() != 0) {
+    return origin.emitOpError() << "\"@" << zkir::FUNC_NAME_CONSTRAIN
+                                << "\" must have no return type";
+  }
+
+  // Type of the first parameter must match the parent StructDefOp of the current operation.
+  llvm::ArrayRef<mlir::Type> inputTypes = funcType.getInputs();
+  if (inputTypes.size() < 1) {
+    return origin.emitOpError() << "\"@" << zkir::FUNC_NAME_CONSTRAIN
+                                << "\" must have at least one input type";
+  }
+  return compareTypes(symbolTable, parentStruct, inputTypes.front(), origin, "first input");
+}
+
+} // namespace
+
 mlir::LogicalResult FuncOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-  mlir::FailureOr<StructDefOp> parentStruct = getParentOfType<StructDefOp>(*this);
-  if (mlir::succeeded(parentStruct)) {
-    // Verify return type restrictions
-    llvm::ArrayRef<mlir::Type> resTypes = getFunctionType().getResults();
+  mlir::FailureOr<StructDefOp> parentStructOpt = getParentOfType<StructDefOp>(*this);
+  if (mlir::succeeded(parentStructOpt)) {
+    // Verify return type restrictions for functions within a StructDefOp
     llvm::StringRef funcName = getSymName();
     if (zkir::FUNC_NAME_COMPUTE == funcName) {
-      // Must return type of parent struct
-      if (resTypes.size() != 1) {
-        return this->getOperation()->emitOpError()
-               << "\"" << funcName << "\" must have exactly one return type";
-      }
-
-      // Lookup the return type StructDefOp and ensure it matches the parent StructDefOp of the
-      // current operation.
-      StructDefOp expectedReturnStruct = parentStruct.value();
-      if (StructType sType = llvm::dyn_cast<StructType>(resTypes.front())) {
-        mlir::FailureOr<StructDefOp> actualReturnStructOpt =
-            lookupTopLevelSymbol<StructDefOp>(symbolTable, *this, sType.getName());
-        if (mlir::failed(actualReturnStructOpt)) {
-          return this->emitError().append(
-              "could not find '", StructDefOp::getOperationName(), "' named \"", sType.getName(),
-              "\""
-          );
-        }
-        StructDefOp actualReturnStruct = actualReturnStructOpt.value();
-        if (actualReturnStruct != expectedReturnStruct) {
-          return computeRetErr(*this, expectedReturnStruct)
-              .attachNote(actualReturnStruct.getLoc())
-              .append("returns this type instead");
-        }
-      } else {
-        return computeRetErr(*this, expectedReturnStruct);
-      }
+      return verifyFuncTypeCompute(*this, symbolTable, parentStructOpt.value());
     } else if (zkir::FUNC_NAME_CONSTRAIN == funcName) {
-      // Must return '()' type, i.e. have no return types
-      if (resTypes.size() != 0) {
-        return this->getOperation()->emitOpError()
-               << "\"" << funcName << "\" must have no return type";
-      }
+      return verifyFuncTypeConstrain(*this, symbolTable, parentStructOpt.value());
     }
   }
   return mlir::success();
@@ -290,18 +319,19 @@ LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // Call target must be specified via full path from the root module.
   mlir::FailureOr<FuncOp> tgtOpt = lookupTopLevelSymbol<FuncOp>(symbolTable, *this, fnAttr);
   if (mlir::failed(tgtOpt)) {
-    return this->emitError() << "no function named \"" << fnAttr << "\"";
+    return this->emitError() << "no '" << FuncOp::getOperationName() << "' named \"" << fnAttr
+                             << "\"";
   }
   FuncOp tgt = tgtOpt.value();
   // Enforce restrictions on callers of compute/constrain functions within structs.
   if (isInStruct(tgt.getOperation())) {
     if (tgt.getSymName().compare(FUNC_NAME_COMPUTE) == 0) {
       return verifyInStructFunctionNamed<FUNC_NAME_COMPUTE, 32>(*this, [] {
-        return llvm::SmallString<32>({"targeting \"", FUNC_NAME_COMPUTE, "\" "});
+        return llvm::SmallString<32>({"targeting \"@", FUNC_NAME_COMPUTE, "\" "});
       });
     } else if (tgt.getSymName().compare(FUNC_NAME_CONSTRAIN) == 0) {
       return verifyInStructFunctionNamed<FUNC_NAME_CONSTRAIN, 32>(*this, [] {
-        return llvm::SmallString<32>({"targeting \"", FUNC_NAME_CONSTRAIN, "\" "});
+        return llvm::SmallString<32>({"targeting \"@", FUNC_NAME_CONSTRAIN, "\" "});
       });
     }
   }
