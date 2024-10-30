@@ -121,7 +121,9 @@ def ZKIR_StructDefOp
 }
 
 def ZKIR_FieldDefOp
-    : ZKIR_Op<"field", [HasParent<"::zkir::StructDefOp">, Symbol]> {
+    : ZKIR_Op<"field", [HasParent<"::zkir::StructDefOp">,
+                        DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+                        Symbol]> {
   let summary = "Struct/component field";
   let description = [{
     Describes a field in a struct/component.

@@ -30,13 +30,29 @@ inline mlir::FailureOr<T> lookupSymbolIn(
 
 template <typename T, typename NameT>
 inline mlir::FailureOr<T> lookupTopLevelSymbol(
-    mlir::SymbolTableCollection &symbolTable, mlir::Operation *from, NameT &&symbol
+    mlir::SymbolTableCollection &symbolTable, NameT &&symbol, mlir::Operation *origin
 ) {
-  mlir::FailureOr<mlir::ModuleOp> root = getRootModule(from);
+  mlir::FailureOr<mlir::ModuleOp> root = getRootModule(origin);
   if (mlir::failed(root)) {
     return root; // getRootModule() already emits a sufficient error message
   }
-  return lookupSymbolIn<T, NameT>(symbolTable, std::forward<NameT>(symbol), root.value(), from);
+  return lookupSymbolIn<T, NameT>(symbolTable, std::forward<NameT>(symbol), root.value(), origin);
+}
+
+mlir::LogicalResult verifyTypeResolution(
+    mlir::SymbolTableCollection &symbolTable, mlir::Type ty, mlir::Operation *origin
+);
+
+mlir::LogicalResult verifyTypeResolution(
+    mlir::SymbolTableCollection &symbolTable, llvm::ArrayRef<mlir::Type>::iterator start,
+    llvm::ArrayRef<mlir::Type>::iterator end, mlir::Operation *origin
+);
+
+inline mlir::LogicalResult verifyTypeResolution(
+    mlir::SymbolTableCollection &symbolTable, llvm::ArrayRef<mlir::Type> types,
+    mlir::Operation *origin
+) {
+  return verifyTypeResolution(symbolTable, types.begin(), types.end(), origin);
 }
 
 } // namespace zkir

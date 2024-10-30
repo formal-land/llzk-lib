@@ -100,4 +100,29 @@ mlir::FailureOr<mlir::SymbolRefAttr> getPathFromRoot(FuncOp &to) {
   }
 }
 
+mlir::LogicalResult verifyTypeResolution(
+    mlir::SymbolTableCollection &symbolTable, mlir::Type ty, mlir::Operation *origin
+) {
+  if (StructType sTy = llvm::dyn_cast<StructType>(ty)) {
+    return sTy.getDefinition(symbolTable, origin);
+  } else if (ArrayType aTy = llvm::dyn_cast<ArrayType>(ty)) {
+    return verifyTypeResolution(symbolTable, aTy.getElementType(), origin);
+  } else {
+    return mlir::success();
+  }
+}
+
+mlir::LogicalResult verifyTypeResolution(
+    mlir::SymbolTableCollection &symbolTable, llvm::ArrayRef<mlir::Type>::iterator start,
+    llvm::ArrayRef<mlir::Type>::iterator end, mlir::Operation *origin
+) {
+  mlir::LogicalResult res = mlir::success();
+  for (; start != end; ++start) {
+    if (mlir::failed(verifyTypeResolution(symbolTable, *start, origin))) {
+      res = mlir::failure();
+    }
+  }
+  return res;
+}
+
 } // namespace zkir
