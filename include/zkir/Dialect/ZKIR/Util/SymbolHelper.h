@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Dialect/ZKIR/IR/Ops.h"
+#include "zkir/Dialect/ZKIR/IR/Ops.h"
 
 #include <mlir/IR/BuiltinOps.h>
 

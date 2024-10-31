@@ -6,6 +6,6 @@
 #include <mlir/IR/Diagnostics.h>
 
 // Include TableGen'd declarations
-#include "Dialect/ZKIR/IR/Enums.h.inc"
+#include "zkir/Dialect/ZKIR/IR/Enums.h.inc"
 
 namespace zkir {} // namespace zkir

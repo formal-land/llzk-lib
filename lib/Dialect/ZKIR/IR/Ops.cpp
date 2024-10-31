@@ -1,6 +1,6 @@
-#include "Dialect/ZKIR/IR/Ops.h"
-#include "Dialect/ZKIR/IR/Types.h"
-#include "Dialect/ZKIR/Util/SymbolHelper.h"
+#include "zkir/Dialect/ZKIR/IR/Ops.h"
+#include "zkir/Dialect/ZKIR/IR/Types.h"
+#include "zkir/Dialect/ZKIR/Util/SymbolHelper.h"
 
 #include <mlir/IR/Diagnostics.h>
 
@@ -8,11 +8,11 @@
 
 // TableGen'd implementation files
 #define GET_OP_CLASSES
-#include "Dialect/ZKIR/IR/OpInterfaces.cpp.inc"
+#include "zkir/Dialect/ZKIR/IR/OpInterfaces.cpp.inc"
 
 // TableGen'd implementation files
 #define GET_OP_CLASSES
-#include "Dialect/ZKIR/IR/Ops.cpp.inc"
+#include "zkir/Dialect/ZKIR/IR/Ops.cpp.inc"
 
 namespace zkir {
 

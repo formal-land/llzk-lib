@@ -1,9 +1,9 @@
 #ifndef ZKIR_TYPES
 #define ZKIR_TYPES
 
-include "Dialect/ZKIR/IR/Attrs.td"
-include "Dialect/ZKIR/IR/Dialect.td"
-include "Dialect/ZKIR/IR/Enums.td"
+include "zkir/Dialect/ZKIR/IR/Attrs.td"
+include "zkir/Dialect/ZKIR/IR/Dialect.td"
+include "zkir/Dialect/ZKIR/IR/Enums.td"
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypes.td"

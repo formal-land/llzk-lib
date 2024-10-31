@@ -1,5 +1,5 @@
-#include "Dialect/ZKIR/IR/Attrs.h"
-#include "Dialect/ZKIR/IR/Types.h"
+#include "zkir/Dialect/ZKIR/IR/Attrs.h"
+#include "zkir/Dialect/ZKIR/IR/Types.h"
 
 namespace zkir {
 

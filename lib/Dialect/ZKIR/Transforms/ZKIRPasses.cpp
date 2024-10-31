@@ -1,1 +1,1 @@
-#include "Dialect/ZKIR/Transforms/ZKIRPasses.h"
+#include "zkir/Dialect/ZKIR/Transforms/ZKIRPasses.h"

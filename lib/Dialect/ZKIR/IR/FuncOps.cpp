@@ -2,8 +2,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "Dialect/ZKIR/IR/Ops.h"
-#include "Dialect/ZKIR/Util/SymbolHelper.h"
+#include "zkir/Dialect/ZKIR/IR/Ops.h"
+#include "zkir/Dialect/ZKIR/Util/SymbolHelper.h"
 
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/OpImplementation.h>

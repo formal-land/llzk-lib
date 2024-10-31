@@ -1,6 +1,6 @@
-#include "Dialect/ZKIR/IR/Types.h"
-#include "Dialect/ZKIR/IR/Ops.h"
-#include "Dialect/ZKIR/Util/SymbolHelper.h"
+#include "zkir/Dialect/ZKIR/IR/Types.h"
+#include "zkir/Dialect/ZKIR/IR/Ops.h"
+#include "zkir/Dialect/ZKIR/Util/SymbolHelper.h"
 
 #include <mlir/IR/BuiltinTypeInterfaces.h>
 #include <mlir/Support/LogicalResult.h>

@@ -1,14 +1,14 @@
 #pragma once
 
-#include "Dialect/ZKIR/IR/Dialect.h"
-#include "Dialect/ZKIR/IR/Enums.h"
-#include "Dialect/ZKIR/IR/Types.h"
+#include "zkir/Dialect/ZKIR/IR/Dialect.h"
+#include "zkir/Dialect/ZKIR/IR/Enums.h"
+#include "zkir/Dialect/ZKIR/IR/Types.h"
 
 #include <mlir/IR/DialectImplementation.h>
 
 // Include TableGen'd declarations
 #define GET_ATTRDEF_CLASSES
-#include "Dialect/ZKIR/IR/Attrs.h.inc"
+#include "zkir/Dialect/ZKIR/IR/Attrs.h.inc"
 
 namespace zkir {
 

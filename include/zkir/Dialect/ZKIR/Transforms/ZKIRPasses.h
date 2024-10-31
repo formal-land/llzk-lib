@@ -6,5 +6,5 @@ namespace zkir {
 std::unique_ptr<mlir::Pass> createHelloWorldPass();
 
 #define GEN_PASS_REGISTRATION
-#include "Dialect/ZKIR/Transforms/ZKIRPasses.h.inc"
+#include "zkir/Dialect/ZKIR/Transforms/ZKIRPasses.h.inc"
 }; // namespace zkir

@@ -6,8 +6,8 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 
-include "Dialect/ZKIR/IR/Types.td"
-include "Dialect/ZKIR/IR/OpInterfaces.td"
+include "zkir/Dialect/ZKIR/IR/Types.td"
+include "zkir/Dialect/ZKIR/IR/OpInterfaces.td"
 
 class ZKIR_Op<string mnemonic, list<Trait> traits = []>
     : Op<ZKIRDialect, mnemonic, traits>;

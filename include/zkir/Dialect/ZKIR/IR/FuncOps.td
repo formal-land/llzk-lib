@@ -13,7 +13,7 @@ include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-include "Dialect/ZKIR/IR/OpsBase.td"
+include "zkir/Dialect/ZKIR/IR/OpsBase.td"
 
 //===----------------------------------------------------------------------===//
 // FuncOp

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Dialect/ZKIR/IR/Attrs.h"
-#include "Dialect/ZKIR/IR/Dialect.h"
-#include "Dialect/ZKIR/IR/Types.h"
+#include "zkir/Dialect/ZKIR/IR/Attrs.h"
+#include "zkir/Dialect/ZKIR/IR/Dialect.h"
+#include "zkir/Dialect/ZKIR/IR/Types.h"
 
 #include <mlir/Bytecode/BytecodeOpInterface.h>
 #include <mlir/IR/BuiltinOps.h>
@@ -100,8 +100,8 @@ public:
 
 // Include TableGen'd declarations
 #define GET_OP_CLASSES
-#include "Dialect/ZKIR/IR/OpInterfaces.h.inc"
+#include "zkir/Dialect/ZKIR/IR/OpInterfaces.h.inc"
 
 // Include TableGen'd declarations
 #define GET_OP_CLASSES
-#include "Dialect/ZKIR/IR/Ops.h.inc"
+#include "zkir/Dialect/ZKIR/IR/Ops.h.inc"

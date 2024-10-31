@@ -1,5 +1,5 @@
-#include "Dialect/ZKIR/Util/SymbolHelper.h"
-#include "Dialect/ZKIR/IR/Ops.h"
+#include "zkir/Dialect/ZKIR/Util/SymbolHelper.h"
+#include "zkir/Dialect/ZKIR/IR/Ops.h"
 
 #include <mlir/IR/BuiltinOps.h>
 

@@ -1,7 +1,7 @@
 #ifndef ZKIR_OP_INTERFACES
 #define ZKIR_OP_INTERFACES
 
-include "Dialect/ZKIR/IR/Types.td"
+include "zkir/Dialect/ZKIR/IR/Types.td"
 
 def FieldRefOpInterface : OpInterface<"FieldRefOpInterface"> {
   let description = [{

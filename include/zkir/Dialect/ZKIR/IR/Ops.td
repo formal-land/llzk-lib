@@ -8,10 +8,10 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 
-include "Dialect/ZKIR/IR/Attrs.td"
-include "Dialect/ZKIR/IR/Types.td"
-include "Dialect/ZKIR/IR/OpsBase.td"
-include "Dialect/ZKIR/IR/FuncOps.td"
+include "zkir/Dialect/ZKIR/IR/Attrs.td"
+include "zkir/Dialect/ZKIR/IR/Types.td"
+include "zkir/Dialect/ZKIR/IR/OpsBase.td"
+include "zkir/Dialect/ZKIR/IR/FuncOps.td"
 
 //===------------------------------------------------------------------===//
 // Basic constructs
@@ -241,15 +241,15 @@ def ZKIR_ReadArrayOp
     This operation loads the value from an array at position `$index`.
 
     Exampl̀e of 1-dimensional array:
-    ```zkir 
+    ```zkir
     %i = index.constant 0
     %0 = zkir.new_array %a, %b, %c : !zkir.array<3 x !zkir.felt>
     // %1 is now equal to %a
     %1 = zkir.readarr %0[%i] : !zkir.array<3 x !zkir.felt>, !zkir.felt
     ```
-    
+
     Exampl̀e of 3-dimensional array:
-    ```zkir 
+    ```zkir
     %i = index.constant 0
     %j = index.constant 1
     %k = index.constant 4
@@ -279,7 +279,7 @@ def ZKIR_WriteArrayOp
 
     Exampl̀e of 1-dimensional array:
 
-    ```zkir 
+    ```zkir
     %i = index.constant 0
     %0 = zkir.constfelt 42
     %1 = zkir.new_array %a, %b, %c : !zkir.array<3 x !zkir.felt>
@@ -289,7 +289,7 @@ def ZKIR_WriteArrayOp
 
     Exampl̀e of 2-dimensional array:
 
-    ```zkir 
+    ```zkir
     %i = index.constant 0
     %j = index.constant 0
     %0 = zkir.constfelt 42
