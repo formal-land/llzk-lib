@@ -9,6 +9,12 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/IR/EnumAttr.td"
 
+// APInts that allows comparison involving different bitwidths.
+class APIntParameter<string desc = "">
+    : AttrOrTypeParameter<"::llvm::APInt", desc> {
+  let comparator = "::llvm::APInt::isSameValue($_lhs, $_rhs)";
+}
+
 class ZKIR_Attr<string name, string attrMnemonic, list<Trait> traits = []>
     : AttrDef<ZKIRDialect, name, traits> {
   let mnemonic = attrMnemonic;
@@ -32,9 +38,9 @@ def ZKIR_FeltConstAttr
     A felt attribute represents a finite field element.
   }];
 
-  let parameters = (ins "::llvm::APInt":$value);
+  let parameters = (ins APIntParameter<"The felt constant value">:$value);
 
-  let assemblyFormat = [{ custom<APInt>($value) }];
+  let assemblyFormat = [{ $value }];
 
   let extraClassDeclaration = [{
     ::mlir::Type getType() const;
@@ -71,11 +77,12 @@ def ZKIR_LoopBounds : ZKIR_Attr<"LoopBounds", "loopbounds"> {
     ```
   }];
 
-  let parameters = (ins "::llvm::APInt":$lower, "::llvm::APInt":$upper,
-      "::llvm::APInt":$step);
+  let parameters =
+      (ins APIntParameter<"Loop variable lower bound (inclusive)">:$lower,
+          APIntParameter<"Loop variable upper bound (exclusive)">:$upper,
+          APIntParameter<"Loop variable step/increment">:$step);
 
-  let assemblyFormat = "`<` custom<APInt>($lower) `to` custom<APInt>($upper) "
-                       "`step` custom<APInt>($step) `>`";
+  let assemblyFormat = "`<` $lower `to` $upper `step` $step `>`";
 }
 
 #endif // ZKIR_ATTRS
