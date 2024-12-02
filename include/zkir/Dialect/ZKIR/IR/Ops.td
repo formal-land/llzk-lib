@@ -468,20 +468,20 @@ def ZKIR_CmpOp : ZKIR_Op<"cmp", [Pure]> {
 
     ```zkir
     // Less than comparison.
-    %0 = zkir.cmp<lt>(%a, %b)
+    %0 = zkir.cmp lt(%a, %b)
 
     // Greater than or equal comparison.
-    %1 = zkir.cmp<ge>(%a, %b)
+    %1 = zkir.cmp ge(%a, %b)
 
     // Not equal comparison.
-    %2 = zkir.cmp<ne>(%a, %b)
+    %2 = zkir.cmp ne(%a, %b)
     ```
   }];
 
-  let arguments = (ins ZKIR_CmpPredicateAttr:$pred, ZKIR_FeltType:$lhs,
+  let arguments = (ins ZKIR_CmpPredicateAttr:$predicate, ZKIR_FeltType:$lhs,
       ZKIR_FeltType:$rhs);
   let results = (outs I1:$result);
-  let assemblyFormat = "`` $pred `(` $lhs `,` $rhs `)` attr-dict";
+  let assemblyFormat = "`` $predicate `(` $lhs `,` $rhs `)` attr-dict";
 }
 
 def ZKIR_AndBoolOp : ZKIR_BinaryBoolOp<"and", [ComputeOnly, Commutative]> {
