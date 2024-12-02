@@ -1,0 +1,11 @@
+// Imported via `include_fail.zkir`
+
+module attributes {veridise.lang = "zkir"} {
+  // expected-error@+1 {{'zkir.include' op expected 'builtin.module' from included file to have "veridise.lang" attribute}}
+  zkir.include "Inputs/header_3.zkir" as @std
+
+  zkir.func @test_func() {
+    zkir.call @std::@pkg_two::@my_func_2() : () -> ()
+    return
+  }
+}

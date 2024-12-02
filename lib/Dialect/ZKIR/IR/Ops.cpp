@@ -1,10 +1,14 @@
 #include "zkir/Dialect/ZKIR/IR/Ops.h"
 #include "zkir/Dialect/ZKIR/IR/Types.h"
+#include "zkir/Dialect/ZKIR/Util/IncludeHelper.h"
 #include "zkir/Dialect/ZKIR/Util/SymbolHelper.h"
 
+#include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Diagnostics.h>
 
 #include <llvm/ADT/Twine.h>
+#include <mlir/IR/OwningOpRef.h>
+#include <mlir/Support/LogicalResult.h>
 
 // TableGen'd implementation files
 #define GET_OP_CLASSES
@@ -37,6 +41,18 @@ bool isInStructFunctionNamed(mlir::Operation *op, char const *funcName) {
     }
   }
   return false;
+}
+
+//===------------------------------------------------------------------===//
+// IncludeOp (see IncludeHelper.cpp for other functions)
+//===------------------------------------------------------------------===//
+
+IncludeOp IncludeOp::create(mlir::Location loc, llvm::StringRef name, llvm::StringRef path) {
+  return delegate_to_build<IncludeOp>(loc, name, path);
+}
+
+IncludeOp IncludeOp::create(mlir::Location loc, mlir::StringAttr name, mlir::StringAttr path) {
+  return delegate_to_build<IncludeOp>(loc, name, path);
 }
 
 //===------------------------------------------------------------------===//
@@ -96,7 +112,7 @@ mlir::LogicalResult StructDefOp::verifyRegions() {
   return mlir::success();
 }
 
-FieldDefOp StructDefOp::getFieldDef(::mlir::StringAttr fieldName) {
+FieldDefOp StructDefOp::getFieldDef(mlir::StringAttr fieldName) {
   // The Body Region was verified to have exactly one Block so only need to search front() Block.
   for (mlir::Operation &op : getBody().front()) {
     if (FieldDefOp fieldDef = llvm::dyn_cast_if_present<FieldDefOp>(op)) {
@@ -121,26 +137,26 @@ mlir::LogicalResult FieldDefOp::verifySymbolUses(SymbolTableCollection &symbolTa
 // FieldRefOp implementations
 //===------------------------------------------------------------------===//
 namespace {
-mlir::FailureOr<FieldDefOp> getFieldDefOp(
+mlir::FailureOr<SymbolLookupResult<FieldDefOp>> getFieldDefOp(
     FieldRefOpInterface refOp, mlir::SymbolTableCollection &symbolTable, StructType tyStruct
 ) {
   mlir::Operation *op = refOp.getOperation();
-  mlir::FailureOr<StructDefOp> structDef = tyStruct.getDefinition(symbolTable, op);
+  auto structDef = tyStruct.getDefinition(symbolTable, op);
   if (mlir::failed(structDef)) {
-    return structDef; // getDefinition() already emits a sufficient error message
+    return mlir::failure(); // getDefinition() already emits a sufficient error message
   }
-  auto res = zkir::lookupSymbolIn<FieldDefOp, mlir::SymbolRefAttr>(
+  auto res = zkir::lookupSymbolIn<FieldDefOp>(
       symbolTable, mlir::SymbolRefAttr::get(refOp->getContext(), refOp.getFieldName()),
-      structDef.value(), op
+      structDef.value().get(), op
   );
   if (mlir::failed(res)) {
     return refOp->emitError() << "no '" << FieldDefOp::getOperationName() << "' named \"@"
                               << refOp.getFieldName() << "\" in \"" << tyStruct.getName() << "\"";
   }
-  return res;
+  return std::move(res.value());
 }
 
-inline mlir::FailureOr<FieldDefOp>
+inline mlir::FailureOr<SymbolLookupResult<FieldDefOp>>
 getFieldDefOp(FieldRefOpInterface refOp, mlir::SymbolTableCollection &symbolTable) {
   return getFieldDefOp(refOp, symbolTable, refOp.getStructType());
 }
@@ -153,11 +169,11 @@ mlir::LogicalResult verifySymbolUses(
   if (mlir::failed(tyStruct.verifySymbol(symbolTable, refOp.getOperation()))) {
     return mlir::failure();
   }
-  mlir::FailureOr<FieldDefOp> field = getFieldDefOp(refOp, symbolTable, tyStruct);
+  auto field = getFieldDefOp(refOp, symbolTable, tyStruct);
   if (mlir::failed(field)) {
     return field; // getFieldDefOp() already emits a sufficient error message
   }
-  mlir::Type fieldType = field.value().getType();
+  mlir::Type fieldType = field->get().getType();
   if (fieldType != compareTo.getType()) {
     return refOp->emitOpError() << "has wrong type; expected " << fieldType << ", got "
                                 << compareTo.getType();
@@ -166,19 +182,21 @@ mlir::LogicalResult verifySymbolUses(
 }
 } // namespace
 
-mlir::FailureOr<FieldDefOp> FieldReadOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
+mlir::FailureOr<SymbolLookupResult<FieldDefOp>>
+FieldReadOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
   return zkir::getFieldDefOp(*this, symbolTable);
 }
 
-mlir::LogicalResult FieldReadOp::verifySymbolUses(::mlir::SymbolTableCollection &symbolTable) {
+mlir::LogicalResult FieldReadOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
   return zkir::verifySymbolUses(*this, symbolTable, getResult(), "read");
 }
 
-mlir::FailureOr<FieldDefOp> FieldWriteOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
+mlir::FailureOr<SymbolLookupResult<FieldDefOp>>
+FieldWriteOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
   return zkir::getFieldDefOp(*this, symbolTable);
 }
 
-mlir::LogicalResult FieldWriteOp::verifySymbolUses(::mlir::SymbolTableCollection &symbolTable) {
+mlir::LogicalResult FieldWriteOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
   return zkir::verifySymbolUses(*this, symbolTable, getVal(), "write");
 }
 
@@ -186,7 +204,7 @@ mlir::LogicalResult FieldWriteOp::verifySymbolUses(::mlir::SymbolTableCollection
 // FeltConstantOp
 //===------------------------------------------------------------------===//
 
-void FeltConstantOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+void FeltConstantOp::getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
   llvm::SmallString<32> buf;
   llvm::raw_svector_ostream os(buf);
   os << "felt_const_";
@@ -200,7 +218,7 @@ mlir::OpFoldResult FeltConstantOp::fold(FeltConstantOp::FoldAdaptor) { return ge
 // FeltNonDetOp
 //===------------------------------------------------------------------===//
 
-void FeltNonDetOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+void FeltNonDetOp::getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
   setNameFn(getResult(), "felt_nondet");
 }
 
@@ -208,7 +226,7 @@ void FeltNonDetOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
 // CreateArrayOp
 //===------------------------------------------------------------------===//
 
-void CreateArrayOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+void CreateArrayOp::getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
   setNameFn(getResult(), "array");
 }
 
@@ -216,7 +234,7 @@ void CreateArrayOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
 // CreateStructOp
 //===------------------------------------------------------------------===//
 
-void CreateStructOp::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+void CreateStructOp::getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
   setNameFn(getResult(), "self");
 }
 

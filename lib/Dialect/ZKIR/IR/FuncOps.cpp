@@ -22,10 +22,7 @@ using namespace mlir;
 FuncOp FuncOp::create(
     Location location, StringRef name, FunctionType type, ArrayRef<NamedAttribute> attrs
 ) {
-  OpBuilder builder(location->getContext());
-  OperationState state(location, getOperationName());
-  FuncOp::build(builder, state, name, type, attrs);
-  return cast<FuncOp>(Operation::create(state));
+  return delegate_to_build<FuncOp>(location, name, type, attrs);
 }
 
 FuncOp FuncOp::create(
@@ -210,14 +207,13 @@ mlir::LogicalResult compareTypes(
     FuncOp &origin, const char *aspect
 ) {
   if (StructType sType = llvm::dyn_cast<StructType>(actualType)) {
-    mlir::FailureOr<StructDefOp> actualStructOpt =
-        lookupTopLevelSymbol<StructDefOp>(symbolTable, sType.getName(), origin);
+    auto actualStructOpt = lookupTopLevelSymbol<StructDefOp>(symbolTable, sType.getName(), origin);
     if (mlir::failed(actualStructOpt)) {
       return origin.emitError().append(
           "could not find '", StructDefOp::getOperationName(), "' named \"", sType.getName(), "\""
       );
     }
-    StructDefOp actualStruct = actualStructOpt.value();
+    StructDefOp actualStruct = actualStructOpt.value().get();
     if (actualStruct != expectedStruct) {
       return genCompareErr(expectedStruct, origin, aspect)
           .attachNote(actualStruct.getLoc())
@@ -334,12 +330,12 @@ LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     return emitOpError("requires a 'callee' symbol reference attribute");
   }
   // Call target must be specified via full path from the root module.
-  mlir::FailureOr<FuncOp> tgtOpt = lookupTopLevelSymbol<FuncOp>(symbolTable, fnAttr, *this);
+  auto tgtOpt = lookupTopLevelSymbol<FuncOp>(symbolTable, fnAttr, *this);
   if (mlir::failed(tgtOpt)) {
     return this->emitError() << "no '" << FuncOp::getOperationName() << "' named \"" << fnAttr
                              << "\"";
   }
-  FuncOp tgt = tgtOpt.value();
+  FuncOp tgt = tgtOpt.value().get();
   // Enforce restrictions on callers of compute/constrain functions within structs.
   if (isInStruct(tgt.getOperation())) {
     if (tgt.getSymName().compare(FUNC_NAME_COMPUTE) == 0) {

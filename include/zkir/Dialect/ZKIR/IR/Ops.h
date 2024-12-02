@@ -3,6 +3,7 @@
 #include "zkir/Dialect/ZKIR/IR/Attrs.h"
 #include "zkir/Dialect/ZKIR/IR/Dialect.h"
 #include "zkir/Dialect/ZKIR/IR/Types.h"
+#include "zkir/Dialect/ZKIR/Util/SymbolLookupResult.h" // IWYU pragma: keep
 
 #include <mlir/Bytecode/BytecodeOpInterface.h>
 #include <mlir/IR/BuiltinOps.h>
@@ -96,6 +97,12 @@ public:
                      << "\" within a '" << getOperationName<StructDefOp>() << "' definition";
   }
 };
+
+template <typename OpType, typename... Args>
+inline OpType delegate_to_build(mlir::Location location, Args &&...args) {
+  mlir::OpBuilder builder(location->getContext());
+  return builder.create<OpType>(location, std::forward<Args>(args)...);
+}
 } // namespace zkir
 
 // Include TableGen'd declarations
