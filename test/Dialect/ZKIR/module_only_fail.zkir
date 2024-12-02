@@ -1,3 +1,0 @@
-// RUN: zkir-opt -split-input-file -verify-diagnostics %s
-
-modules {} // expected-error {{custom op 'modules' is unknown}}

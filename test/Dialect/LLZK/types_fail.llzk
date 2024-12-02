@@ -1,0 +1,26 @@
+// RUN: llzk-opt -split-input-file -verify-diagnostics %s
+
+llzk.func private @a()
+// COM: A shape can be parsed empty, creating an empty array.
+// COM: Parsing here fails because we cannot have a function type.
+// expected-error@+1 {{failed to parse LLZK_ArrayType parameter 'elementType' which is to be a `::mlir::Type`}}
+llzk.func private @b(%x: !llzk.array<@a x !llzk.felt>) // expected-error {{expected non-function type}}
+// -----
+
+// COM: An empty shape and a type (index) is parsed.
+// The last token of the rule is `>` but after parsing
+// `index` it will encounter `x`, hence the error.
+llzk.func private @c(%x: !llzk.array<index x i256>) // expected-error {{expected '>'}}
+// -----
+
+// expected-error@+1 {{expected a valid LLZK type but found 'i256'}}
+llzk.func private @d(%x: !llzk.array<5 x i256>)
+// -----
+
+// expected-error@+2 {{expected a valid LLZK type but found 'i256'}}
+// expected-error@+1 {{failed to parse LLZK_ArrayType parameter 'elementType' which is to be a `::mlir::Type`}}
+llzk.func private @f(%x: !llzk.array<2 x !llzk.array<3 x !llzk.array<2 x i256>>>)
+// -----
+// expected-error@+1 {{array must have a shape of at least one element}}
+llzk.func private @b(%x: !llzk.array<!llzk.felt>) 
+// -----

@@ -1,0 +1,152 @@
+// RUN: llzk-opt -split-input-file -verify-diagnostics %s
+
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ComponentB {
+    func @compute() -> !llzk.struct<@ComponentB> {
+      %self = new_struct : !llzk.struct<@ComponentB>
+      return %self : !llzk.struct<@ComponentB>
+    }
+
+    func @constrain(%p: !llzk.struct<@ComponentB>) {
+      // expected-error@+2 {{'llzk.readf' op references unknown symbol "@f2"}}
+      // expected-error@+1 {{no 'llzk.field' named "@f2" in "@ComponentB"}}
+      %0 = readf %p[@f2] : !llzk.struct<@ComponentB>, !llzk.felt
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ComponentC {
+    llzk.field @f2 : index
+
+    func @compute() -> !llzk.struct<@ComponentC> {
+      %self = new_struct : !llzk.struct<@ComponentC>
+      return %self : !llzk.struct<@ComponentC>
+    }
+
+    func @constrain(%p: !llzk.struct<@ComponentC>) {
+      // expected-error@+1 {{'llzk.readf' op has wrong type; expected 'index', got '!llzk.felt}}
+      %0 = readf %p[@f2] : !llzk.struct<@ComponentC>, !llzk.felt
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ComponentD {
+    llzk.field @f2 : index
+
+    func @compute() -> !llzk.struct<@ComponentD> {
+      %self = new_struct : !llzk.struct<@ComponentD>
+      return %self : !llzk.struct<@ComponentD>
+    }
+
+    func @constrain(%p: !llzk.struct<@ComponentD>) { // expected-note {{prior use here}}
+      // expected-error@+1 {{use of value '%p' expects different type than prior uses: '!llzk.struct<@WrongComponent>' vs '!llzk.struct<@ComponentD>'}}
+      %0 = readf %p[@f2] : !llzk.struct<@WrongComponent>, index
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ComponentF {
+    llzk.field @f2 : index
+
+    func @compute() -> !llzk.struct<@ComponentF> {
+      %self = new_struct : !llzk.struct<@ComponentF>
+      return %self : !llzk.struct<@ComponentF>
+    }
+
+    func @constrain(%p: !llzk.struct<@WrongComponent>) { // expected-note {{prior use here}}
+      // expected-error@+1 {{use of value '%p' expects different type than prior uses: '!llzk.struct<@ComponentF>' vs '!llzk.struct<@WrongComponent>'}}
+      %0 = readf %p[@f2] : !llzk.struct<@ComponentF>, index
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ComponentH {
+    func @compute() -> !llzk.struct<@ComponentH> {
+      %self = new_struct : !llzk.struct<@ComponentH>
+      return %self : !llzk.struct<@ComponentH>
+    }
+
+    func @constrain(%p: !llzk.struct<@ComponentH>, %0: !llzk.felt) {
+      // expected-error@+2 {{'llzk.writef' op references unknown symbol "@f2"}}
+      // expected-error@+1 {{no 'llzk.field' named "@f2" in "@ComponentH"}}
+      writef %p[@f2] = %0 : !llzk.struct<@ComponentH>, !llzk.felt
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ComponentJ {
+    llzk.field @f2 : index
+
+    func @compute() -> !llzk.struct<@ComponentJ> {
+      %self = new_struct : !llzk.struct<@ComponentJ>
+      return %self : !llzk.struct<@ComponentJ>
+    }
+
+    func @constrain(%p: !llzk.struct<@ComponentJ>, %0: !llzk.felt) {
+      // expected-error@+1 {{'llzk.writef' op has wrong type; expected 'index', got '!llzk.felt}}
+      writef %p[@f2] = %0 : !llzk.struct<@ComponentJ>, !llzk.felt
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ComponentK {
+    llzk.field @f2 : index
+
+    func @compute() -> !llzk.struct<@ComponentK> {
+      %self = new_struct : !llzk.struct<@ComponentK>
+      return %self : !llzk.struct<@ComponentK>
+    }
+
+    func @constrain(%p: !llzk.struct<@ComponentK>, %0: !llzk.felt) { // expected-note {{prior use here}}
+      // expected-error@+1 {{use of value '%p' expects different type than prior uses: '!llzk.struct<@WrongComponent>' vs '!llzk.struct<@ComponentK>'}}
+      writef %p[@f2] = %0 : !llzk.struct<@WrongComponent>, index
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ComponentL {
+    llzk.field @f2 : index
+
+    func @compute() -> !llzk.struct<@ComponentL> {
+      %self = new_struct : !llzk.struct<@ComponentL>
+      return %self : !llzk.struct<@ComponentL>
+    }
+
+    func @constrain(%p: !llzk.struct<@WrongComponent>, %0: !llzk.felt) { // expected-note {{prior use here}}
+      // expected-error@+1 {{use of value '%p' expects different type than prior uses: '!llzk.struct<@ComponentL>' vs '!llzk.struct<@WrongComponent>'}}
+      writef %p[@f2] = %0 : !llzk.struct<@ComponentL>, index
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ComponentM {
+    llzk.field @f2 : !llzk.array<2 x index>
+
+    func @compute() -> !llzk.struct<@ComponentM> {
+      %self = new_struct : !llzk.struct<@ComponentM>
+      return %self : !llzk.struct<@ComponentM>
+    }
+
+    func @constrain(%p: !llzk.struct<@ComponentM>, %0: !llzk.array<7 x index>) { // expected-note {{prior use here}}
+      // expected-error@+1 {{use of value '%0' expects different type than prior uses: '!llzk.array<2 x index>' vs '!llzk.array<7 x index>'}}
+      writef %p[@f2] = %0 : !llzk.struct<@ComponentM>, !llzk.array<2 x index>
+      return
+    }
+  }
+}

@@ -1,0 +1,59 @@
+// RUN: llzk-opt %s -split-input-file -verify-diagnostics
+
+llzk.func @constant_scalar_mismatch() {
+  %a = llzk.constfelt 6744573456376
+  %b = index.constant 2 // expected-note {{prior use here}}
+  // expected-error@+1 {{use of value '%b' expects different type than prior uses: '!llzk.felt' vs 'index'}}
+  %r = llzk.new_array %a, %b : !llzk.array<2 x !llzk.felt>
+}
+
+// -----
+
+llzk.func @param_scalar_mismatch(
+      %a: !llzk.felt,
+      %b: !llzk.felt,
+      %c: index // expected-note {{prior use here}}
+      ) {
+  // expected-error@+1 {{use of value '%c' expects different type than prior uses: '!llzk.felt' vs 'index'}}
+  %r = llzk.new_array %a, %b, %c: !llzk.array<3 x !llzk.felt>
+}
+
+// -----
+
+llzk.func @mismatch_to_type_attr(
+      %a: !llzk.array<3 x index>, // expected-note {{prior use here}}
+      %b: !llzk.felt
+      ) {
+  %c = index.constant 324
+  // expected-error@+1 {{use of value '%a' expects different type than prior uses: 'index' vs '!llzk.array<3 x index>'}}
+  %r = llzk.new_array %a, %b, %c: !llzk.array<3 x index>
+}
+
+// -----
+
+llzk.func @mismatch_to_type_attr_size() {
+  %a = llzk.constfelt 6744573456376
+  %b = llzk.constfelt 381928390103509
+  // expected-error@+1 {{custom op 'llzk.new_array' 2 operands present, but expected 3}}
+  %r = llzk.new_array %a, %b : !llzk.array<3 x !llzk.felt>
+}
+
+// -----
+
+llzk.func @multi_array_not_enough_values(%a: index, %b: index) -> !llzk.array<2x2 x index> {
+  %c = index.constant 324
+  // expected-error@+1 {{custom op 'llzk.new_array' 3 operands present, but expected 4}}
+  %r = llzk.new_array %a, %b, %c: !llzk.array<2x2 x index>
+  return %r: !llzk.array<2x2 x index>
+}
+// -----
+
+llzk.func @multi_array_too_many_values(%a: index, %b: index) -> !llzk.array<2x2 x index> {
+  %c = index.constant 324
+  %d = index.constant 999
+  %e = index.constant 879
+  // expected-error@+1 {{custom op 'llzk.new_array' 5 operands present, but expected 4}}
+  %r = llzk.new_array %a, %b, %c, %d, %e: !llzk.array<2x2 x index>
+  return %r: !llzk.array<2x2 x index>
+}
+// -----
