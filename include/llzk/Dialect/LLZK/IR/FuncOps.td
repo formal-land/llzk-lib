@@ -141,6 +141,14 @@ def FuncOp
     //===------------------------------------------------------------------===//
 
     bool isDeclaration() { return isExternal(); }
+
+    //===------------------------------------------------------------------===//
+    // Utility Methods
+    //===------------------------------------------------------------------===//
+
+    /// Return the full name for this function from the root module, including
+    /// all module and struct scopes.
+    ::mlir::SymbolRefAttr getFullyQualifiedName() const;
   }];
   let hasCustomAssemblyFormat = 1;
 

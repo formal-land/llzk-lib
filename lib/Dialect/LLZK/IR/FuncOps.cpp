@@ -296,6 +296,12 @@ mlir::LogicalResult FuncOp::verifySymbolUses(SymbolTableCollection &symbolTable)
   return mlir::LogicalResult::success(mlir::succeeded(a) && mlir::succeeded(b));
 }
 
+mlir::SymbolRefAttr FuncOp::getFullyQualifiedName() const {
+  auto res = getPathFromRoot(*const_cast<FuncOp *>(this));
+  assert(mlir::succeeded(res));
+  return res.value();
+}
+
 //===----------------------------------------------------------------------===//
 // ReturnOp
 //===----------------------------------------------------------------------===//
