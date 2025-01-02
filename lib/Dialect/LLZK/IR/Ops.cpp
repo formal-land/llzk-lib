@@ -8,6 +8,7 @@
 #include <mlir/IR/OwningOpRef.h>
 #include <mlir/Support/LogicalResult.h>
 
+#include <llvm/ADT/StringSet.h>
 #include <llvm/ADT/Twine.h>
 
 // TableGen'd implementation files
@@ -95,14 +96,40 @@ std::string StructDefOp::getHeaderString() {
 bool StructDefOp::hasParamNamed(StringAttr find) {
   if (ArrayAttr params = this->getConstParamsAttr()) {
     for (Attribute attr : params) {
-      if (FlatSymbolRefAttr flatter = llvm::dyn_cast<FlatSymbolRefAttr>(attr)) {
-        if (flatter.getRootReference() == find) {
-          return true;
-        }
+      assert(llvm::isa<FlatSymbolRefAttr>(attr)); // per ODS
+      if (llvm::cast<FlatSymbolRefAttr>(attr).getRootReference() == find) {
+        return true;
       }
     }
   }
   return false;
+}
+
+LogicalResult StructDefOp::verifySymbolUses(SymbolTableCollection &tables) {
+  if (ArrayAttr params = this->getConstParamsAttr()) {
+    // Ensure struct parameter names are unique
+    llvm::StringSet<> uniqNames;
+    for (Attribute attr : params) {
+      assert(llvm::isa<FlatSymbolRefAttr>(attr)); // per ODS
+      StringRef name = llvm::cast<FlatSymbolRefAttr>(attr).getValue();
+      if (!uniqNames.insert(name).second) {
+        return this->emitOpError().append("has more than one parameter named \"@", name, "\"");
+      }
+    }
+    // Ensure they do not conflict with existing symbols
+    for (Attribute attr : params) {
+      auto res = lookupTopLevelSymbol(tables, llvm::cast<FlatSymbolRefAttr>(attr), *this, false);
+      if (mlir::succeeded(res)) {
+        return this->emitOpError()
+            .append("parameter name \"@")
+            .append(llvm::cast<FlatSymbolRefAttr>(attr).getValue())
+            .append("\" conflicts with an existing symbol")
+            .attachNote(res->get()->getLoc())
+            .append("symbol already defined here");
+      }
+    }
+  }
+  return success();
 }
 
 mlir::LogicalResult StructDefOp::verifyRegions() {
@@ -164,7 +191,7 @@ FieldDefOp StructDefOp::getFieldDef(mlir::StringAttr fieldName) {
 // ConstReadOp
 //===------------------------------------------------------------------===//
 
-mlir::LogicalResult ConstReadOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+mlir::LogicalResult ConstReadOp::verifySymbolUses(SymbolTableCollection &tables) {
   FailureOr<StructDefOp> getParentRes = getParentOfType<StructDefOp>(*this);
   if (failed(getParentRes)) {
     return this->emitOpError().append(
@@ -185,12 +212,12 @@ mlir::LogicalResult ConstReadOp::verifySymbolUses(SymbolTableCollection &symbolT
 //===------------------------------------------------------------------===//
 bool FieldDefOp::hasPublicAttr() { return getOperation()->hasAttr(PublicAttr::name); }
 
-mlir::LogicalResult FieldDefOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+mlir::LogicalResult FieldDefOp::verifySymbolUses(SymbolTableCollection &tables) {
   mlir::Type fieldType = this->getType();
   if (StructType fieldStructType = llvm::dyn_cast<StructType>(fieldType)) {
     // Special case for StructType verifies that the field type can resolve and that it is NOT the
     // parent struct (i.e. struct fields cannot create circular references).
-    auto fieldTypeRes = verifyStructTypeResolution(symbolTable, fieldStructType, *this);
+    auto fieldTypeRes = verifyStructTypeResolution(tables, fieldStructType, *this);
     if (mlir::failed(fieldTypeRes)) {
       return mlir::failure(); // above already emits a sufficient error message
     }
@@ -204,7 +231,7 @@ mlir::LogicalResult FieldDefOp::verifySymbolUses(SymbolTableCollection &symbolTa
     }
     return mlir::success();
   } else {
-    return verifyTypeResolution(symbolTable, fieldType, *this);
+    return verifyTypeResolution(tables, fieldType, *this);
   }
 }
 
@@ -212,16 +239,15 @@ mlir::LogicalResult FieldDefOp::verifySymbolUses(SymbolTableCollection &symbolTa
 // FieldRefOp implementations
 //===------------------------------------------------------------------===//
 namespace {
-mlir::FailureOr<SymbolLookupResult<FieldDefOp>> getFieldDefOp(
-    FieldRefOpInterface refOp, mlir::SymbolTableCollection &symbolTable, StructType tyStruct
-) {
+mlir::FailureOr<SymbolLookupResult<FieldDefOp>>
+getFieldDefOp(FieldRefOpInterface refOp, mlir::SymbolTableCollection &tables, StructType tyStruct) {
   mlir::Operation *op = refOp.getOperation();
-  auto structDef = tyStruct.getDefinition(symbolTable, op);
+  auto structDef = tyStruct.getDefinition(tables, op);
   if (mlir::failed(structDef)) {
     return mlir::failure(); // getDefinition() already emits a sufficient error message
   }
   auto res = llzk::lookupSymbolIn<FieldDefOp>(
-      symbolTable, mlir::SymbolRefAttr::get(refOp->getContext(), refOp.getFieldName()),
+      tables, mlir::SymbolRefAttr::get(refOp->getContext(), refOp.getFieldName()),
       structDef.value().get(), op
   );
   if (mlir::failed(res)) {
@@ -233,18 +259,18 @@ mlir::FailureOr<SymbolLookupResult<FieldDefOp>> getFieldDefOp(
 }
 
 inline mlir::FailureOr<SymbolLookupResult<FieldDefOp>>
-getFieldDefOp(FieldRefOpInterface refOp, mlir::SymbolTableCollection &symbolTable) {
-  return getFieldDefOp(refOp, symbolTable, refOp.getStructType());
+getFieldDefOp(FieldRefOpInterface refOp, mlir::SymbolTableCollection &tables) {
+  return getFieldDefOp(refOp, tables, refOp.getStructType());
 }
 
 mlir::LogicalResult verifySymbolUses(
-    FieldRefOpInterface refOp, mlir::SymbolTableCollection &symbolTable, mlir::Value compareTo
+    FieldRefOpInterface refOp, mlir::SymbolTableCollection &tables, mlir::Value compareTo
 ) {
   StructType tyStruct = refOp.getStructType();
-  if (mlir::failed(tyStruct.verifySymbolRef(symbolTable, refOp.getOperation()))) {
+  if (mlir::failed(tyStruct.verifySymbolRef(tables, refOp.getOperation()))) {
     return mlir::failure();
   }
-  auto field = getFieldDefOp(refOp, symbolTable, tyStruct);
+  auto field = getFieldDefOp(refOp, tables, tyStruct);
   if (mlir::failed(field)) {
     return field; // getFieldDefOp() already emits a sufficient error message
   }
@@ -259,21 +285,21 @@ mlir::LogicalResult verifySymbolUses(
 } // namespace
 
 mlir::FailureOr<SymbolLookupResult<FieldDefOp>>
-FieldReadOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
-  return llzk::getFieldDefOp(*this, symbolTable);
+FieldReadOp::getFieldDefOp(mlir::SymbolTableCollection &tables) {
+  return llzk::getFieldDefOp(*this, tables);
 }
 
-mlir::LogicalResult FieldReadOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
-  return llzk::verifySymbolUses(*this, symbolTable, getResult());
+mlir::LogicalResult FieldReadOp::verifySymbolUses(mlir::SymbolTableCollection &tables) {
+  return llzk::verifySymbolUses(*this, tables, getResult());
 }
 
 mlir::FailureOr<SymbolLookupResult<FieldDefOp>>
-FieldWriteOp::getFieldDefOp(mlir::SymbolTableCollection &symbolTable) {
-  return llzk::getFieldDefOp(*this, symbolTable);
+FieldWriteOp::getFieldDefOp(mlir::SymbolTableCollection &tables) {
+  return llzk::getFieldDefOp(*this, tables);
 }
 
-mlir::LogicalResult FieldWriteOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
-  return llzk::verifySymbolUses(*this, symbolTable, getVal());
+mlir::LogicalResult FieldWriteOp::verifySymbolUses(mlir::SymbolTableCollection &tables) {
+  return llzk::verifySymbolUses(*this, tables, getVal());
 }
 
 //===------------------------------------------------------------------===//
