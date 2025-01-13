@@ -287,6 +287,14 @@ FieldDefOp StructDefOp::getFieldDef(StringAttr fieldName) {
   return nullptr;
 }
 
+FuncOp StructDefOp::getComputeFuncOp() {
+  return llvm::dyn_cast_if_present<FuncOp>(lookupSymbol(FUNC_NAME_COMPUTE));
+}
+
+FuncOp StructDefOp::getConstrainFuncOp() {
+  return llvm::dyn_cast_if_present<FuncOp>(lookupSymbol(FUNC_NAME_CONSTRAIN));
+}
+
 //===------------------------------------------------------------------===//
 // ConstReadOp
 //===------------------------------------------------------------------===//

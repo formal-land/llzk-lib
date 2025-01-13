@@ -291,7 +291,7 @@ LogicalResult ReturnOp::verify() {
 namespace {
 
 struct CallOpVerifier {
-  CallOpVerifier(CallOp *callOp) : callOp(callOp) {}
+  CallOpVerifier(CallOp *c) : callOp(c) {}
   virtual ~CallOpVerifier() {};
 
   LogicalResult verify() {
@@ -332,8 +332,8 @@ protected:
 };
 
 struct KnownTargetVerifier : public CallOpVerifier {
-  KnownTargetVerifier(CallOp *callOp, SymbolLookupResult<FuncOp> &&tgtRes)
-      : CallOpVerifier(callOp), tgt(*tgtRes), tgtType(tgt.getFunctionType()),
+  KnownTargetVerifier(CallOp *c, SymbolLookupResult<FuncOp> &&tgtRes)
+      : CallOpVerifier(c), tgt(*tgtRes), tgtType(tgt.getFunctionType()),
         includeSymNames(tgtRes.getIncludeSymNames()) {}
 
   LogicalResult verifyInputs() override {
@@ -384,8 +384,8 @@ private:
 };
 
 struct UnknownTargetVerifier : public CallOpVerifier {
-  UnknownTargetVerifier(CallOp *callOp, SymbolRefAttr calleeAttr)
-      : CallOpVerifier(callOp), calleeAttr(calleeAttr) {}
+  UnknownTargetVerifier(CallOp *c, SymbolRefAttr calleeAttr_)
+      : CallOpVerifier(c), calleeAttr(calleeAttr_) {}
 
   LogicalResult verifyInputs() override { return success(); }
   LogicalResult verifyOutputs() override { return success(); }
@@ -427,6 +427,21 @@ LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &tables) {
 
 FunctionType CallOp::getCalleeType() {
   return FunctionType::get(getContext(), getOperandTypes(), getResultTypes());
+}
+
+/// Get the argument operands to the called function.
+CallOp::operand_range CallOp::getArgOperands() { return {arg_operand_begin(), arg_operand_end()}; }
+
+mlir::MutableOperandRange CallOp::getArgOperandsMutable() { return getOperandsMutable(); }
+
+/// Return the callee of this operation.
+mlir::CallInterfaceCallable CallOp::getCallableForCallee() {
+  return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+}
+
+/// Set the callee for this operation.
+void CallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+  (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
 }
 
 } // namespace llzk

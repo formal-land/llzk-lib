@@ -58,25 +58,6 @@ lookupSymbolRec(SymbolTableCollection &tables, SymbolRefAttr symbol, Operation *
 // SymbolLookupResultUntyped
 //===------------------------------------------------------------------===//
 
-// Move constructor
-SymbolLookupResultUntyped::SymbolLookupResultUntyped(SymbolLookupResultUntyped &&other)
-    : op(other.op), managedResources(std::move(other.managedResources)),
-      includeSymNameStack(std::move(other.includeSymNameStack)) {
-  other.op = nullptr;
-}
-
-// Move assigment
-SymbolLookupResultUntyped &SymbolLookupResultUntyped::operator=(SymbolLookupResultUntyped &&other) {
-  if (this != &other) {
-    op = other.op;
-    other.op = nullptr;
-    managedResources = std::move(other.managedResources);
-    includeSymNameStack.clear();
-    includeSymNameStack = std::move(other.includeSymNameStack);
-  }
-  return *this;
-}
-
 /// Access the internal operation.
 Operation *SymbolLookupResultUntyped::operator->() { return op; }
 Operation &SymbolLookupResultUntyped::operator*() { return *op; }
@@ -95,7 +76,9 @@ void SymbolLookupResultUntyped::manage(
   // resources from the first call because that call will contain the final ModuleOp loaded in a
   // chain of IncludeOp and that is the one which contains the result Operation*.
   if (!managedResources) {
-    managedResources = std::make_pair(std::move(ptr), std::move(tables));
+    managedResources = std::make_shared<std::pair<OwningOpRef<ModuleOp>, SymbolTableCollection>>(
+        std::make_pair(std::move(ptr), std::move(tables))
+    );
   }
 }
 

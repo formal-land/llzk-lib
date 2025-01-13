@@ -14,19 +14,12 @@ namespace llzk {
 constexpr char LANG_ATTR_NAME[] = "veridise.lang";
 
 using ManagedResources =
-    std::optional<std::pair<mlir::OwningOpRef<mlir::ModuleOp>, mlir::SymbolTableCollection>>;
+    std::shared_ptr<std::pair<mlir::OwningOpRef<mlir::ModuleOp>, mlir::SymbolTableCollection>>;
 
 class SymbolLookupResultUntyped {
 public:
   SymbolLookupResultUntyped() : op(nullptr) {}
   SymbolLookupResultUntyped(mlir::Operation *op) : op(op) {}
-
-  // Since we don't want to copy around this class the move operations are manually implemented to
-  // respect the rule of 5.
-  SymbolLookupResultUntyped(const SymbolLookupResultUntyped &) = delete;
-  SymbolLookupResultUntyped(SymbolLookupResultUntyped &&);
-  SymbolLookupResultUntyped &operator=(const SymbolLookupResultUntyped &) = delete;
-  SymbolLookupResultUntyped &operator=(SymbolLookupResultUntyped &&);
 
   /// Access the internal operation.
   mlir::Operation *operator->();
@@ -41,7 +34,7 @@ public:
   std::vector<llvm::StringRef> getIncludeSymNames() { return includeSymNameStack; }
 
   mlir::SymbolTableCollection *getSymbolTableCache() {
-    if (managedResources.has_value()) {
+    if (managedResources) {
       return &managedResources->second;
     } else {
       return nullptr;
