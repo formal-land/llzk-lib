@@ -246,9 +246,6 @@ LogicalResult StructDefOp::verifyRegions() {
       );
     }
     // Verify that the Struct has no paramters
-    // llvm::outs() << "const params = " << this->getConstParamsAttr() << "\n";
-    // auto attr = getConstParamsAttr();
-    // return attr ? ::std::optional< ::mlir::ArrayAttr >(attr) : (::std::nullopt);
     auto structParams = this->getConstParamsAttr();
     if (structParams && !structParams.empty()) {
       return this->emitError().append(
@@ -488,18 +485,17 @@ void CreateArrayOp::printInferredArrayType(
 
 LogicalResult ReadArrayOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ReadArrayOpAdaptor adaptor,
-    ::llvm::SmallVectorImpl<Type> &inferredReturnTypes
+    llvm::SmallVectorImpl<Type> &inferredReturnTypes
 ) {
   inferredReturnTypes.resize(1);
-  Type lvalType = adaptor.getLvalue().getType();
+  Type lvalType = adaptor.getArrRef().getType();
   assert(llvm::isa<ArrayType>(lvalType)); // per ODS spec of ReadArrayOp
   inferredReturnTypes[0] = llvm::cast<ArrayType>(lvalType).getElementType();
   return success();
 }
 
 bool ReadArrayOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-  // There is a single return type per ODS spec of ReadArrayOp
-  return l.size() == 1 && r.size() == 1 && typesUnify(l.front(), r.front());
+  return singletonTypeListsUnify(l, r);
 }
 
 //===------------------------------------------------------------------===//
