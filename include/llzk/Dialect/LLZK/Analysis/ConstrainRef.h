@@ -142,6 +142,7 @@ public:
   bool isIntegerVal() const { return mlir::isa<mlir::IntegerType>(getType()); }
   bool isScalar() const { return isConstant() || isFeltVal() || isIndexVal() || isIntegerVal(); }
 
+  mlir::BlockArgument getBlockArgument() const { return blockArg; }
   unsigned getInputNum() const { return blockArg.getArgNumber(); }
   mlir::APInt getConstantFeltValue() const {
     debug::ensure(isConstantFelt(), __FUNCTION__ + mlir::Twine(" requires a constant felt!"));
@@ -188,6 +189,8 @@ public:
     copy.fieldRefs.push_back(ConstrainRefIndex(other.getConstantIndexValue()));
     return copy;
   }
+
+  const std::vector<ConstrainRefIndex> &getPieces() const { return fieldRefs; }
 
   void print(mlir::raw_ostream &os) const;
   void dump() const { print(llvm::errs()); }
