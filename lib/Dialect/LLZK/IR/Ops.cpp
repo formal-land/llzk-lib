@@ -499,6 +499,46 @@ bool ReadArrayOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
 }
 
 //===------------------------------------------------------------------===//
+// ExtractArrayOp
+//===------------------------------------------------------------------===//
+
+LogicalResult ExtractArrayOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ExtractArrayOpAdaptor adaptor,
+    llvm::SmallVectorImpl<Type> &inferredReturnTypes
+) {
+  size_t numToSkip = adaptor.getIndices().size();
+  Type arrRefType = adaptor.getArrRef().getType();
+  assert(llvm::isa<ArrayType>(arrRefType)); // per ODS spec of ExtractArrayOp
+  ArrayType arrayType = llvm::cast<ArrayType>(arrRefType);
+  ArrayRef<Attribute> dimSizes = arrayType.getDimensionSizes();
+
+  // Check for invalid cases
+  auto compare = numToSkip <=> dimSizes.size();
+  if (compare == 0) {
+    return mlir::emitOptionalError(
+        location, "'", ExtractArrayOp::getOperationName(),
+        "' op cannot select all dimensions of an array. Use '", ReadArrayOp::getOperationName(),
+        "' instead."
+    );
+  } else if (compare > 0) {
+    return mlir::emitOptionalError(
+        location, "'", ExtractArrayOp::getOperationName(),
+        "' op cannot select more dimensions than exist in the source array"
+    );
+  }
+
+  // Generate and store reduced array type
+  inferredReturnTypes.resize(1);
+  inferredReturnTypes[0] =
+      ArrayType::get(arrayType.getElementType(), dimSizes.drop_front(numToSkip));
+  return success();
+}
+
+bool ExtractArrayOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+  return singletonTypeListsUnify(l, r);
+}
+
+//===------------------------------------------------------------------===//
 // EmitEqualityOp
 //===------------------------------------------------------------------===//
 
