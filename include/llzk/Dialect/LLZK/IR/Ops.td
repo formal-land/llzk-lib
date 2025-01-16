@@ -477,6 +477,28 @@ def LLZK_ExtractArrayOp
   }];
 }
 
+def LLZK_ArrayLengthOp : LLZK_Op<"array_len", [Pure]> {
+  let summary = "returns the length of an array";
+  let description = [{
+    This operation returns the size of the specified dimension of an array.
+
+    Example:
+
+    ```llzk
+    %a = llzk.new_array : !llzk.array<2,3 x !llzk.felt>
+    %0 = index.constant 0
+    %x = llzk.array_len %a, %0 : !llzk.array<2,3 x !llzk.felt> // result is 2
+    %1 = index.constant 1
+    %y = llzk.array_len %a, %1 : !llzk.array<2,3 x !llzk.felt> // result is 3
+    ```
+  }];
+
+  let arguments = (ins LLZK_ArrayType:$array, Index:$dim);
+  let results = (outs Index:$length);
+
+  let assemblyFormat = "$array `,` $dim `:` type($array) attr-dict";
+}
+
 //===------------------------------------------------------------------===//
 // Constraint emit operations
 //===------------------------------------------------------------------===//
@@ -521,7 +543,7 @@ class LLZK_EmitOp<string mnemonic, list<Trait> traits = []>
 }
 
 def EmitEqType : TypeConstraint<CPred<"::llzk::isValidEmitEqType($_self)">,
-                                "free from struct type">;
+                                "free from struct and string type">;
 
 def LLZK_EmitEqualityOp
     : LLZK_EmitOp<"emit_eq", [Commutative, ElementwiseMappable,
@@ -680,6 +702,41 @@ def LLZK_NotBoolOp : LLZK_UnaryOpBase<"not", I1, [ComputeOnly]> {
   let description = [{
     Logical NOT (i.e. negation) operator. The type of operand and return value is `i1` (i.e. boolean).
   }];
+}
+
+def LLZK_IntToFeltOp : LLZK_Op<"tofelt", [Pure]> {
+  let summary = "converts an integer into a felt";
+  let description = [{
+    Transforms any builtin integer value into a felt value.
+
+    Example:
+
+    ```llzk
+    %0 = llzk.cmp lt(%a, %b)
+    %1 = llzk.tofelt %0 : i1
+    ```
+  }];
+
+  let arguments = (ins AnyLLZKIntType:$value);
+  let results = (outs LLZK_FeltType:$result);
+  let assemblyFormat = "$value `:` type($value) attr-dict";
+}
+
+def LLZK_FeltToIndexOp : LLZK_Op<"toindex", [Pure]> {
+  let summary = "converts a felt into an index type";
+  let description = [{
+    Transforms a felt type into an index to allow being used as array indices.
+
+    Example:
+    ```llzk
+    %0 = llzk.toindex %a 
+    %1 = llzk.readarr %b[%0]
+    ```
+  }];
+
+  let arguments = (ins LLZK_FeltType:$value);
+  let results = (outs Index:$result);
+  let assemblyFormat = "$value attr-dict";
 }
 
 #endif // LLZK_OPS
