@@ -1,3 +1,4 @@
+#include "llzk/Dialect/LLZK/Analysis/ConstrainRefLattice.h"
 #include "llzk/Dialect/LLZK/Analysis/ConstraintDependencyGraph.h"
 #include "llzk/Dialect/LLZK/Analysis/DenseAnalysis.h"
 #include "llzk/Dialect/LLZK/Util/Hash.h"
@@ -19,129 +20,6 @@ Private Utilities:
 These classes are defined here and not in the header as they are not designed
 for use outside of this specific ConstraintDependencyGraph analysis.
 */
-
-using ConstantMap = mlir::DenseMap<mlir::Value, mlir::APInt>;
-using ConstrainRefSetMap = mlir::DenseMap<mlir::Value, ConstrainRefSet>;
-using ArgumentMap = mlir::DenseMap<mlir::BlockArgument, ConstrainRefSet>;
-
-/// A lattice for use in dense analysis.
-class ConstrainRefLattice : public dataflow::AbstractDenseLattice {
-public:
-  using AbstractDenseLattice::AbstractDenseLattice;
-
-  /* Static utilities */
-
-  /// If val is the source of other values (i.e., a block argument from the function
-  /// args or a constant), create the base reference to the val. Otherwise,
-  /// return failure.
-  /// Our lattice values must originate from somewhere.
-  static mlir::FailureOr<ConstrainRef> getSourceRef(mlir::Value val) {
-    if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(val)) {
-      return ConstrainRef(blockArg);
-    } else if (auto constFelt = mlir::dyn_cast<FeltConstantOp>(val.getDefiningOp())) {
-      return ConstrainRef(constFelt);
-    } else if (auto constIdx = mlir::dyn_cast<mlir::index::ConstantOp>(val.getDefiningOp())) {
-      return ConstrainRef(constIdx);
-    }
-    return mlir::failure();
-  }
-
-  /* Required methods */
-
-  /// Maximum upper bound
-  mlir::ChangeResult join(const AbstractDenseLattice &rhs) override {
-    if (auto *r = dynamic_cast<const ConstrainRefLattice *>(&rhs)) {
-      return setValues(r->refSetMap);
-    }
-    llvm::report_fatal_error("invalid join lattice type");
-    return mlir::ChangeResult::NoChange;
-  }
-
-  /// Minimum lower bound
-  virtual mlir::ChangeResult meet(const AbstractDenseLattice &rhs) override {
-    llvm::report_fatal_error("meet operation is not supported for ConstrainRefLattice");
-    return mlir::ChangeResult::NoChange;
-  }
-
-  void print(mlir::raw_ostream &os) const override {
-    os << "ConstrainRefLattice { ";
-    for (auto mit = refSetMap.begin(); mit != refSetMap.end();) {
-      auto &[v, refSet] = *mit;
-      os << "\n    (" << v << ") => { ";
-      for (auto it = refSet.begin(); it != refSet.end();) {
-        it->print(os);
-        it++;
-        if (it != refSet.end()) {
-          os << ", ";
-        }
-      }
-      mit++;
-      if (mit != refSetMap.end()) {
-        os << " },";
-      } else {
-        os << " }\n";
-      }
-    }
-    os << "}\n";
-  }
-
-  /* Update utility methods */
-
-  mlir::ChangeResult setValues(const ConstrainRefSetMap &rhs) {
-    auto res = mlir::ChangeResult::NoChange;
-
-    for (auto &[v, s] : rhs) {
-      res |= setValue(v, s);
-    }
-    return res;
-  }
-
-  mlir::ChangeResult setValue(mlir::Value v, const ConstrainRefSet &rhs) {
-    auto res = mlir::ChangeResult::NoChange;
-
-    for (auto &r : rhs) {
-      auto [_, inserted] = refSetMap[v].insert(r);
-      res = inserted ? mlir::ChangeResult::Change : res;
-    }
-    return res;
-  }
-
-  mlir::ChangeResult setValue(mlir::Value v, const ConstrainRef &ref) {
-    auto [_, inserted] = refSetMap[v].insert(ref);
-    return inserted ? mlir::ChangeResult::Change : mlir::ChangeResult::NoChange;
-  }
-
-  ConstrainRefSet getOrDefault(mlir::Value v) const {
-    auto it = refSetMap.find(v);
-    if (it == refSetMap.end()) {
-      auto sourceRef = getSourceRef(v);
-      if (mlir::succeeded(sourceRef)) {
-        return {sourceRef.value()};
-      }
-      return {};
-    }
-    return it->second;
-  }
-
-  ConstrainRefSet getReturnValue(unsigned i) const {
-    auto op = this->getPoint().get<mlir::Operation *>();
-    if (auto retOp = mlir::dyn_cast<ReturnOp>(op)) {
-      if (i >= retOp.getNumOperands()) {
-        llvm::report_fatal_error("return value requested is out of range");
-      }
-      return this->getOrDefault(retOp.getOperand(i));
-    }
-    return ConstrainRefSet();
-  }
-
-private:
-  ConstrainRefSetMap refSetMap;
-};
-
-mlir::raw_ostream &operator<<(mlir::raw_ostream &os, const ConstrainRefLattice &v) {
-  v.print(os);
-  return os;
-}
 
 /// @brief The dataflow analysis that computes the set of references that
 /// LLZK operations use and produce. The analysis is simple: any operation will
@@ -187,7 +65,7 @@ public:
     ///   - `after` is the state after the call operation.
     else if (action == dataflow::CallControlFlowAction::ExitCallee) {
       // Translate argument values based on the operands given at the call site.
-      std::unordered_map<ConstrainRef, ConstrainRefSet, ConstrainRef::Hash> translation;
+      std::unordered_map<ConstrainRef, ConstrainRefLatticeValue, ConstrainRef::Hash> translation;
       auto funcOpRes = resolveCallable<FuncOp>(tables, call);
       debug::ensure(mlir::succeeded(funcOpRes), "could not lookup called function");
       auto funcOp = funcOpRes->get();
@@ -203,17 +81,9 @@ public:
 
       mlir::ChangeResult updated = after->join(before);
       for (unsigned i = 0; i < callOp.getNumResults(); i++) {
-        auto retRef = before.getReturnValue(i);
-        ConstrainRefSet translated;
-        for (auto &ref : retRef) {
-          auto f = translation.find(ref);
-          if (f != translation.end()) {
-            auto &retVal = f->second;
-            translated.insert(retVal.begin(), retVal.end());
-          }
-        }
-
-        updated |= after->setValue(callOp->getResult(i), translated);
+        auto retVal = before.getReturnValue(i);
+        auto [translatedVal, _] = retVal.translate(translation);
+        updated |= after->setValue(callOp->getResult(i), translatedVal);
       }
       propagateIfChanged(after, updated);
     }
@@ -233,7 +103,7 @@ public:
       mlir::Operation *op, const ConstrainRefLattice &before, ConstrainRefLattice *after
   ) override {
     // Collect the references that are made by the operands to `op`.
-    ConstrainRefSetMap operandVals;
+    ConstrainRefLattice::ValueMap operandVals;
     for (auto &operand : op->getOpOperands()) {
       operandVals[operand.get()] = before.getOrDefault(operand.get());
     }
@@ -252,43 +122,29 @@ public:
 
       auto res = fieldRead->getResult(0);
       const auto &ops = operandVals.at(fieldRead->getOpOperand(0).get());
-      ConstrainRefSet fieldVals;
-      for (auto &r : ops) {
-        fieldVals.insert(r.createChild(ConstrainRefIndex(fieldOpRes.value())));
-      }
+      auto [fieldVals, _] = ops.referenceField(fieldOpRes.value());
+
       propagateIfChanged(after, after->setValue(res, fieldVals));
-    } else if (auto arrayRead = mlir::dyn_cast<ReadArrayOp>(op)) {
-      // In the readarr case, we index the first operand by all remaining indices
-      assert(arrayRead->getNumResults() == 1);
-      auto res = arrayRead->getResult(0);
+    } else if (mlir::isa<ReadArrayOp>(op)) {
+      arraySubdivisionOpUpdate(op, operandVals, before, after);
+    } else if (auto createArray = mlir::dyn_cast<CreateArrayOp>(op)) {
+      // Create an array using the operand values, if they exist.
+      // Currently, the new array must either be fully initialized or uninitialized.
 
-      auto array = arrayRead.getOperand(0);
-      auto currVals = operandVals[array];
-
-      for (size_t i = 1; i < arrayRead.getNumOperands(); i++) {
-        auto currentOp = arrayRead.getOperand(i);
-        auto &idxVals = operandVals[currentOp];
-
-        ConstrainRefSet newVals;
-        if (idxVals.size() == 1 && idxVals.begin()->isConstantIndex()) {
-          auto idxVal = *idxVals.begin();
-          for (auto &r : currVals) {
-            newVals.insert(r.createChild(idxVal));
-          }
-        } else {
-          // Otherwise, assume any range is valid.
-          auto arrayType = mlir::dyn_cast<ArrayType>(array.getType());
-          auto lower = mlir::APInt::getZero(64);
-          mlir::APInt upper(64, arrayType.getDimSize(i - 1));
-          auto idxRange = ConstrainRefIndex(lower, upper);
-          for (auto &r : currVals) {
-            newVals.insert(r.createChild(idxRange));
-          }
-        }
-        currVals = newVals;
+      auto newArrayVal = ConstrainRefLatticeValue(createArray.getType().getShape());
+      // If the array is initialized, iterate through all operands and initialize the array value.
+      for (unsigned i = 0; i < createArray.getNumOperands(); i++) {
+        auto currentOp = createArray.getOperand(i);
+        auto &opVals = operandVals[currentOp];
+        (void)newArrayVal.getElemFlatIdx(i).setValue(opVals);
       }
 
-      propagateIfChanged(after, after->setValue(res, currVals));
+      assert(createArray->getNumResults() == 1);
+      auto res = createArray->getResult(0);
+
+      propagateIfChanged(after, after->setValue(res, newArrayVal));
+    } else if (auto extractArray = mlir::dyn_cast<ExtractArrayOp>(op)) {
+      arraySubdivisionOpUpdate(op, operandVals, before, after);
     } else {
       // Standard union of operands into the results value.
       // TODO: Could perform constant computation/propagation here for, e.g., arithmetic
@@ -304,19 +160,65 @@ protected:
 
   // Perform a standard union of operands into the results value.
   mlir::ChangeResult fallbackOpUpdate(
-      mlir::Operation *op, const ConstrainRefSetMap &operandVals, const ConstrainRefLattice &before,
-      ConstrainRefLattice *after
+      mlir::Operation *op, const ConstrainRefLattice::ValueMap &operandVals,
+      const ConstrainRefLattice &before, ConstrainRefLattice *after
   ) {
     auto updated = mlir::ChangeResult::NoChange;
     for (auto res : op->getResults()) {
       auto cur = before.getOrDefault(res);
 
-      for (auto &[_, set] : operandVals) {
-        cur.insert(set.begin(), set.end());
+      for (auto &[_, opVal] : operandVals) {
+        (void)cur.update(opVal);
       }
       updated |= after->setValue(res, cur);
     }
     return updated;
+  }
+
+  // Perform the update for either a readarr op or an extractarr op, which
+  // operate very similarly: index into the first operand using a variable number
+  // of provided indices.
+  void arraySubdivisionOpUpdate(
+      mlir::Operation *op, const ConstrainRefLattice::ValueMap &operandVals,
+      const ConstrainRefLattice &before, ConstrainRefLattice *after
+  ) {
+    debug::ensure(
+        mlir::isa<ReadArrayOp>(op) || mlir::isa<ExtractArrayOp>(op), "wrong type of op provided!"
+    );
+
+    // We index the first operand by all remaining indices.
+    assert(op->getNumResults() == 1);
+    auto res = op->getResult(0);
+
+    auto array = op->getOperand(0);
+    auto it = operandVals.find(array);
+    debug::ensure(it != operandVals.end(), "improperly constructed operandVals map");
+    auto currVals = it->second;
+
+    std::vector<ConstrainRefIndex> indices;
+
+    for (size_t i = 1; i < op->getNumOperands(); i++) {
+      auto currentOp = op->getOperand(i);
+      auto idxIt = operandVals.find(currentOp);
+      debug::ensure(idxIt != operandVals.end(), "improperly constructed operandVals map");
+      auto &idxVals = idxIt->second;
+
+      if (idxVals.isSingleValue() && idxVals.getSingleValue().isConstantIndex()) {
+        ConstrainRefIndex idx(idxVals.getSingleValue().getConstantIndexValue());
+        indices.push_back(idx);
+      } else {
+        // Otherwise, assume any range is valid.
+        auto arrayType = mlir::dyn_cast<ArrayType>(array.getType());
+        auto lower = mlir::APInt::getZero(64);
+        mlir::APInt upper(64, arrayType.getDimSize(i - 1));
+        auto idxRange = ConstrainRefIndex(lower, upper);
+        indices.push_back(idxRange);
+      }
+    }
+
+    auto [newVals, _] = currVals.extract(indices);
+
+    propagateIfChanged(after, after->setValue(res, newVals));
   }
 
 private:
@@ -367,6 +269,9 @@ public:
     return mlir::success();
   }
 
+  /// @brief Return true iff the CDG has been constructed
+  bool constructed() const { return cdg != nullptr; }
+
   ConstraintDependencyGraph &getCDG() {
     ensureCDGCreated();
     return *cdg;
@@ -383,9 +288,7 @@ private:
   std::shared_ptr<ConstraintDependencyGraph> cdg;
 
   void ensureCDGCreated() const {
-    if (!cdg) {
-      llvm::report_fatal_error("CDG does not exist; must invoke constructCDG");
-    }
+    debug::ensure(cdg != nullptr, "CDG does not exist; must invoke constructCDG");
   }
 
   friend class ConstraintDependencyGraphModuleAnalysis;
@@ -511,13 +414,17 @@ mlir::LogicalResult ConstraintDependencyGraph::computeConstraints(
     // Map fn parameters to args in the call op
     for (unsigned i = 0; i < fn.getNumArguments(); i++) {
       auto prefix = ConstrainRef(fn.getArgument(i));
-
-      for (auto &s : lattice->getOrDefault(fnCall.getOperand(i))) {
-        translations.push_back({prefix, s});
-      }
+      auto val = lattice->getOrDefault(fnCall.getOperand(i));
+      translations.push_back({prefix, val});
     }
-    auto cdg = am.getChildAnalysis<ConstraintDependencyGraphAnalysis>(calledStruct).getCDG();
-    auto translatedCDG = cdg.translate(translations);
+    auto &childAnalysis = am.getChildAnalysis<ConstraintDependencyGraphAnalysis>(calledStruct);
+    if (!childAnalysis.constructed()) {
+      debug::ensure(
+          mlir::succeeded(childAnalysis.constructCDG(solver, am)),
+          "could not construct CDG for child struct"
+      );
+    }
+    auto translatedCDG = childAnalysis.getCDG().translate(translations);
 
     // Now, union sets based on the translation
     // We should be able to just merge what is in the translatedCDG to the current CDG
@@ -548,8 +455,8 @@ void ConstraintDependencyGraph::walkConstrainOp(
   debug::ensure(lattice, "failed to get lattice for emit operation");
 
   for (auto operand : emitOp->getOperands()) {
-    auto refs = lattice->getOrDefault(operand);
-    for (auto &ref : refs) {
+    auto latticeVal = lattice->getOrDefault(operand);
+    for (auto &ref : latticeVal.foldToScalar()) {
       if (ref.isConstant()) {
         constUsages.push_back(ref);
       } else {
@@ -577,10 +484,28 @@ ConstraintDependencyGraph ConstraintDependencyGraph::translate(ConstrainRefRemap
   auto translate = [&translation](const ConstrainRef &elem
                    ) -> mlir::FailureOr<std::vector<ConstrainRef>> {
     std::vector<ConstrainRef> refs;
-    for (auto &[prefix, replacement] : translation) {
-      auto translated = elem.translate(prefix, replacement);
-      if (mlir::succeeded(translated)) {
-        refs.push_back(translated.value());
+    for (auto &[prefix, vals] : translation) {
+      if (!elem.isValidPrefix(prefix)) {
+        continue;
+      }
+
+      if (vals.isArray()) {
+        // Try to index into the array
+        auto suffix = elem.getSuffix(prefix);
+        debug::ensure(
+            mlir::succeeded(suffix), "failure is nonsensical, we already checked for valid prefix"
+        );
+
+        auto [resolvedVals, _] = vals.extract(suffix.value());
+        auto folded = resolvedVals.foldToScalar();
+        refs.insert(refs.end(), folded.begin(), folded.end());
+      } else {
+        for (auto &replacement : vals.getScalarValue()) {
+          auto translated = elem.translate(prefix, replacement);
+          if (mlir::succeeded(translated)) {
+            refs.push_back(translated.value());
+          }
+        }
       }
     }
     if (refs.empty()) {
@@ -588,6 +513,7 @@ ConstraintDependencyGraph ConstraintDependencyGraph::translate(ConstrainRefRemap
     }
     return refs;
   };
+
   for (auto leaderIt = signalSets.begin(); leaderIt != signalSets.end(); leaderIt++) {
     if (!leaderIt->isLeader()) {
       continue;

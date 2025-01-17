@@ -21,7 +21,7 @@ void ConstrainRefIndex::print(mlir::raw_ostream &os) const {
 
 bool ConstrainRefIndex::operator<(const ConstrainRefIndex &rhs) const {
   if (isField() && rhs.isField()) {
-    return OpLocationLess<FieldDefOp> {}(getField(), rhs.getField());
+    return NamedOpLocationLess<FieldDefOp> {}(getField(), rhs.getField());
   }
   if (isIndex() && rhs.isIndex()) {
     return getIndex().ult(rhs.getIndex());
@@ -184,9 +184,11 @@ std::vector<ConstrainRef> ConstrainRef::getAllConstrainRefs(StructDefOp structDe
 
 mlir::Type ConstrainRef::getType() const {
   if (isConstantFelt()) {
-    return const_cast<FeltConstantOp &>(constFelt).getType();
+    return std::get<FeltConstantOp>(*constantVal).getType();
   } else if (isConstantIndex()) {
-    return const_cast<mlir::index::ConstantOp &>(constIdx).getType();
+    return std::get<mlir::index::ConstantOp>(*constantVal).getType();
+  } else if (isTemplateConstant()) {
+    return std::get<ConstReadOp>(*constantVal).getType();
   } else {
     int array_derefs = 0;
     int idx = fieldRefs.size() - 1;
@@ -208,24 +210,46 @@ mlir::Type ConstrainRef::getType() const {
   }
 }
 
+bool ConstrainRef::isValidPrefix(const ConstrainRef &prefix) const {
+  if (isConstant()) {
+    return false;
+  }
+
+  if (blockArg != prefix.blockArg || fieldRefs.size() < prefix.fieldRefs.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < prefix.fieldRefs.size(); i++) {
+    if (fieldRefs[i] != prefix.fieldRefs[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+mlir::FailureOr<std::vector<ConstrainRefIndex>> ConstrainRef::getSuffix(const ConstrainRef &prefix
+) const {
+  if (!isValidPrefix(prefix)) {
+    return mlir::failure();
+  }
+  std::vector<ConstrainRefIndex> suffix;
+  for (size_t i = prefix.fieldRefs.size(); i < fieldRefs.size(); i++) {
+    suffix.push_back(fieldRefs[i]);
+  }
+  return suffix;
+}
+
 mlir::FailureOr<ConstrainRef>
 ConstrainRef::translate(const ConstrainRef &prefix, const ConstrainRef &other) const {
   if (isConstant()) {
     return *this;
   }
-
-  if (blockArg != prefix.blockArg || fieldRefs.size() < prefix.fieldRefs.size()) {
+  auto suffix = getSuffix(prefix);
+  if (mlir::failed(suffix)) {
     return mlir::failure();
   }
-  for (size_t i = 0; i < prefix.fieldRefs.size(); i++) {
-    if (fieldRefs[i] != prefix.fieldRefs[i]) {
-      return mlir::failure();
-    }
-  }
+
   auto newSignalUsage = other;
-  for (size_t i = prefix.fieldRefs.size(); i < fieldRefs.size(); i++) {
-    newSignalUsage.fieldRefs.push_back(fieldRefs[i]);
-  }
+  newSignalUsage.fieldRefs.insert(newSignalUsage.fieldRefs.end(), suffix->begin(), suffix->end());
   return newSignalUsage;
 }
 
@@ -234,8 +258,14 @@ void ConstrainRef::print(mlir::raw_ostream &os) const {
     os << "<constfelt: " << getConstantFeltValue() << '>';
   } else if (isConstantIndex()) {
     os << "<index: " << getConstantIndexValue() << '>';
+  } else if (isTemplateConstant()) {
+    auto constRead = std::get<ConstReadOp>(*constantVal);
+    auto structDefOp = constRead->getParentOfType<StructDefOp>();
+    debug::ensure(structDefOp, "struct template should have a struct parent");
+    os << '@' << structDefOp.getName() << "<[@" << constRead.getConstName() << "]>";
   } else {
-    os << "%arg" << blockArg.getArgNumber();
+    debug::ensure(isBlockArgument(), "unhandled print case");
+    os << "%arg" << getInputNum();
     for (auto f : fieldRefs) {
       os << "[" << f << "]";
     }
@@ -243,7 +273,7 @@ void ConstrainRef::print(mlir::raw_ostream &os) const {
 }
 
 bool ConstrainRef::operator==(const ConstrainRef &rhs) const {
-  return blockArg == rhs.blockArg && fieldRefs == rhs.fieldRefs && constFelt == rhs.constFelt;
+  return blockArg == rhs.blockArg && fieldRefs == rhs.fieldRefs && constantVal == rhs.constantVal;
 }
 
 // required for EquivalenceClasses usage
@@ -254,7 +284,7 @@ bool ConstrainRef::operator<(const ConstrainRef &rhs) const {
   } else if (!isConstantFelt() && rhs.isConstantFelt()) {
     return true;
   } else if (isConstantFelt() && rhs.isConstantFelt()) {
-    return constFelt < rhs.constFelt;
+    return getConstantFeltValue().ult(rhs.getConstantFeltValue());
   }
 
   if (isConstantIndex() && !rhs.isConstantIndex()) {
@@ -266,12 +296,25 @@ bool ConstrainRef::operator<(const ConstrainRef &rhs) const {
     return getConstantIndexValue().ult(rhs.getConstantIndexValue());
   }
 
-  // both are not constants
-  if (blockArg.getArgNumber() < rhs.blockArg.getArgNumber()) {
+  if (isTemplateConstant() && !rhs.isTemplateConstant()) {
+    // Put all template constants next at the end
+    return false;
+  } else if (!isTemplateConstant() && rhs.isTemplateConstant()) {
     return true;
-  } else if (blockArg.getArgNumber() > rhs.blockArg.getArgNumber()) {
+  } else if (isTemplateConstant() && rhs.isTemplateConstant()) {
+    auto lhsName = std::get<ConstReadOp>(*constantVal).getConstName();
+    auto rhsName = std::get<ConstReadOp>(*rhs.constantVal).getConstName();
+    return lhsName.compare(rhsName) < 0;
+  }
+
+  // both are not constants
+  debug::ensure(isBlockArgument() && rhs.isBlockArgument(), "unhandled operator< case");
+  if (getInputNum() < rhs.getInputNum()) {
+    return true;
+  } else if (getInputNum() > rhs.getInputNum()) {
     return false;
   }
+
   for (size_t i = 0; i < fieldRefs.size() && i < rhs.fieldRefs.size(); i++) {
     if (fieldRefs[i] < rhs.fieldRefs[i]) {
       return true;
@@ -284,11 +327,15 @@ bool ConstrainRef::operator<(const ConstrainRef &rhs) const {
 
 size_t ConstrainRef::Hash::operator()(const ConstrainRef &val) const {
   if (val.isConstantFelt()) {
-    return OpHash<FeltConstantOp> {}(val.constFelt);
+    return OpHash<FeltConstantOp> {}(std::get<FeltConstantOp>(*val.constantVal));
   } else if (val.isConstantIndex()) {
-    return OpHash<mlir::index::ConstantOp> {}(val.constIdx);
+    return OpHash<mlir::index::ConstantOp> {}(std::get<mlir::index::ConstantOp>(*val.constantVal));
+  } else if (val.isTemplateConstant()) {
+    return OpHash<ConstReadOp> {}(std::get<ConstReadOp>(*val.constantVal));
   } else {
-    size_t hash = std::hash<unsigned> {}(val.blockArg.getArgNumber());
+    debug::ensure(val.isBlockArgument(), "unhandled operator() case");
+
+    size_t hash = std::hash<unsigned> {}(val.getInputNum());
     for (auto f : val.fieldRefs) {
       hash ^= f.getHash();
     }
@@ -298,6 +345,23 @@ size_t ConstrainRef::Hash::operator()(const ConstrainRef &val) const {
 
 mlir::raw_ostream &operator<<(mlir::raw_ostream &os, const ConstrainRef &rhs) {
   rhs.print(os);
+  return os;
+}
+
+mlir::raw_ostream &operator<<(mlir::raw_ostream &os, const ConstrainRefSet &rhs) {
+  os << "{ ";
+  std::vector<ConstrainRef> sortedRefs(rhs.begin(), rhs.end());
+  std::sort(sortedRefs.begin(), sortedRefs.end());
+  for (auto it = sortedRefs.begin(); it != sortedRefs.end();) {
+    os << *it;
+    it++;
+    if (it != sortedRefs.end()) {
+      os << ", ";
+    } else {
+      os << ' ';
+    }
+  }
+  os << '}';
   return os;
 }
 
