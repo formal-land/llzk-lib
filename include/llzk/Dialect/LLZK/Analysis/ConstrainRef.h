@@ -147,7 +147,10 @@ public:
   bool isFeltVal() const { return mlir::isa<FeltType>(getType()); }
   bool isIndexVal() const { return mlir::isa<mlir::IndexType>(getType()); }
   bool isIntegerVal() const { return mlir::isa<mlir::IntegerType>(getType()); }
-  bool isScalar() const { return isConstant() || isFeltVal() || isIndexVal() || isIntegerVal(); }
+  bool isTypeVarVal() const { return mlir::isa<TypeVarType>(getType()); }
+  bool isScalar() const {
+    return isConstant() || isFeltVal() || isIndexVal() || isIntegerVal() || isTypeVarVal();
+  }
 
   bool isBlockArgument() const { return blockArg != nullptr; }
   mlir::BlockArgument getBlockArgument() const {
@@ -221,8 +224,12 @@ public:
 
   bool operator==(const ConstrainRef &rhs) const;
 
+  bool operator!=(const ConstrainRef &rhs) const { return !(*this == rhs); }
+
   // required for EquivalenceClasses usage
   bool operator<(const ConstrainRef &rhs) const;
+
+  bool operator>(const ConstrainRef &rhs) const { return rhs < *this; }
 
   struct Hash {
     size_t operator()(const ConstrainRef &val) const;
