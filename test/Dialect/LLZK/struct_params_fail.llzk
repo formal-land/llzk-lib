@@ -196,8 +196,9 @@ module attributes {veridise.lang = "llzk"} {
 // -----
 // Unknown parameters used to reference self type within component
 module attributes {veridise.lang = "llzk"} {
-  llzk.struct @ComponentK<[@A, @B]> { // expected-note {{should be type of this 'llzk.struct'}}
-    // expected-error@+1 {{'llzk.func' op "@compute" must use type of its ancestor 'llzk.struct' "@ComponentK<[@A, @B]>" as return type}}
+  llzk.struct @ComponentK<[@A, @B]> {
+    // expected-error@+2 {{'llzk.func' op references unknown symbol "@C"}}
+    // expected-error@+1 {{'llzk.func' op references unknown symbol "@D"}}
     func @compute() -> !llzk.struct<@ComponentK<[@C, @D]>> {
       %self = new_struct : !llzk.struct<@ComponentK<[@C, @D]>>
       return %self : !llzk.struct<@ComponentK<[@C, @D]>>
@@ -470,5 +471,47 @@ module attributes {veridise.lang = "llzk"} {
       return %self : !llzk.struct<@ComponentX<[@F]>>
     }
     func @constrain(%self: !llzk.struct<@ComponentX<[@F]>>) { return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ReadConstBadTypeA<[@T]> {
+    func @compute() -> !llzk.struct<@ReadConstBadTypeA<[@T]>> {
+      %self = new_struct : !llzk.struct<@ReadConstBadTypeA<[@T]>>
+      return %self : !llzk.struct<@ReadConstBadTypeA<[@T]>>
+    }
+    func @constrain(%self: !llzk.struct<@ReadConstBadTypeA<[@T]>>) {
+      // expected-error@+1 {{'llzk.read_const' op result #0 must be integral, felt, or typevar type, but got '!llzk.array<54 x index>'}}
+      %0 = read_const @T : !llzk.array<54 x index>
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ReadConstBadTypeB<[@T]> {
+    func @compute() -> !llzk.struct<@ReadConstBadTypeB<[@T]>> {
+      %self = new_struct : !llzk.struct<@ReadConstBadTypeB<[@T]>>
+      return %self : !llzk.struct<@ReadConstBadTypeB<[@T]>>
+    }
+    func @constrain(%self: !llzk.struct<@ReadConstBadTypeB<[@T]>>) {
+      // expected-error@+1 {{'llzk.read_const' op result #0 must be integral, felt, or typevar type, but got '!llzk.struct<@ReadConstBadTypeB<[@T]>>'}}
+      %0 = read_const @T : !llzk.struct<@ReadConstBadTypeB<[@T]>>
+      return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @ReadConstBadTypeC<[@T]> {
+    func @compute() -> !llzk.struct<@ReadConstBadTypeC<[@T]>> {
+      %self = new_struct : !llzk.struct<@ReadConstBadTypeC<[@T]>>
+      return %self : !llzk.struct<@ReadConstBadTypeC<[@T]>>
+    }
+    func @constrain(%self: !llzk.struct<@ReadConstBadTypeC<[@T]>>) {
+      // expected-error@+1 {{'llzk.read_const' op result #0 must be integral, felt, or typevar type, but got '!llzk.string'}}
+      %0 = read_const @T : !llzk.string
+      return
+    }
   }
 }

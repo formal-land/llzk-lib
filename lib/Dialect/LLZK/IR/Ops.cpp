@@ -98,6 +98,15 @@ LogicalResult checkSelfType(
     }
     // Check for an EXACT match in the parameter list since it must reference the "self" type.
     if (expectedStruct.getConstParamsAttr() != actualStructType.getParams()) {
+      // To make error messages more consistent and meaningful, if the parameters don't match
+      // because the actual type uses symbols that are not defined, generate an error about the
+      // undefined symbol(s).
+      if (ArrayAttr tyParams = actualStructType.getParams()) {
+        if (failed(verifyParamsOfType(tables, tyParams.getValue(), actualStructType, origin))) {
+          return failure();
+        }
+      }
+      // Otherwise, generate an error stating the parent struct type must be used.
       return genCompareErr(expectedStruct, origin, aspect)
           .attachNote(actualStruct.getLoc())
           .append("should be type of this '", StructDefOp::getOperationName(), "'");
@@ -325,13 +334,15 @@ LogicalResult ConstReadOp::verifySymbolUses(SymbolTableCollection &tables) {
   if (failed(getParentRes)) {
     return failure(); // verifyInStruct() already emits a sufficient error message
   }
+  // Ensure the named constant is a a parameter of the parent struct
   if (!getParentRes->hasParamNamed(this->getConstNameAttr())) {
     return this->emitOpError()
         .append("references unknown symbol \"", this->getConstNameAttr(), "\"")
         .attachNote(getParentRes->getLoc())
         .append("must reference a parameter of this struct");
   }
-  return success();
+  // Ensure any SymbolRef used in the type are valid
+  return verifyTypeResolution(tables, *this, getType());
 }
 
 //===------------------------------------------------------------------===//
@@ -358,7 +369,7 @@ LogicalResult FieldDefOp::verifySymbolUses(SymbolTableCollection &tables) {
     }
     return success();
   } else {
-    return verifyTypeResolution(tables, fieldType, *this);
+    return verifyTypeResolution(tables, *this, fieldType);
   }
 }
 
@@ -378,9 +389,9 @@ getFieldDefOp(FieldRefOpInterface refOp, SymbolTableCollection &tables, StructTy
       std::move(*structDefRes), op
   );
   if (failed(res)) {
-    return refOp->emitError() << "no '" << FieldDefOp::getOperationName() << "' named \"@"
-                              << refOp.getFieldName() << "\" in \"" << tyStruct.getNameRef()
-                              << "\"";
+    return refOp->emitError() << "could not find '" << FieldDefOp::getOperationName()
+                              << "' named \"@" << refOp.getFieldName() << "\" in \""
+                              << tyStruct.getNameRef() << "\"";
   }
   return std::move(res.value());
 }
@@ -392,21 +403,24 @@ getFieldDefOp(FieldRefOpInterface refOp, SymbolTableCollection &tables) {
 
 LogicalResult
 verifySymbolUses(FieldRefOpInterface refOp, SymbolTableCollection &tables, Value compareTo) {
+  // Ensure the base component/struct type reference can be resolved.
   StructType tyStruct = refOp.getStructType();
   if (failed(tyStruct.verifySymbolRef(tables, refOp.getOperation()))) {
     return failure();
   }
+  // Ensure the field name can be resolved in that struct.
   auto field = getFieldDefOp(refOp, tables, tyStruct);
   if (failed(field)) {
     return field; // getFieldDefOp() already emits a sufficient error message
   }
+  // Ensure the type of the referenced field declaration matches the type used in this op.
   Type fieldType = field->get().getType();
-
   if (!typesUnify(compareTo.getType(), fieldType, field->getIncludeSymNames())) {
     return refOp->emitOpError() << "has wrong type; expected " << fieldType << ", got "
                                 << compareTo.getType();
   }
-  return success();
+  // Ensure any SymbolRef used in the type are valid
+  return verifyTypeResolution(tables, refOp.getOperation(), compareTo.getType());
 }
 } // namespace
 
@@ -425,14 +439,15 @@ FailureOr<SymbolLookupResult<FieldDefOp>> FieldWriteOp::getFieldDefOp(SymbolTabl
 }
 
 LogicalResult FieldWriteOp::verifySymbolUses(SymbolTableCollection &tables) {
+  // Ensure the write op only targets fields in the current struct.
   FailureOr<StructDefOp> getParentRes = verifyInStruct(*this);
   if (failed(getParentRes)) {
     return failure(); // verifyInStruct() already emits a sufficient error message
   }
-  if (failed(checkSelfType(tables, *getParentRes, this->getComponent().getType(), *this, "result")
-      )) {
-    return failure();
+  if (failed(checkSelfType(tables, *getParentRes, getComponent().getType(), *this, "base value"))) {
+    return failure(); // checkSelfType() already emits a sufficient error message
   }
+  // Perform the standard field ref checks.
   return llzk::verifySymbolUses(*this, tables, getVal());
 }
 
@@ -461,6 +476,11 @@ void FeltNonDetOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 //===------------------------------------------------------------------===//
 // CreateArrayOp
 //===------------------------------------------------------------------===//
+
+LogicalResult CreateArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
+  // Ensure any SymbolRef used in the type are valid
+  return verifyTypeResolution(tables, *this, llvm::cast<Type>(getType()));
+}
 
 void CreateArrayOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
   setNameFn(getResult(), "array");
@@ -496,6 +516,11 @@ void CreateArrayOp::printInferredArrayType(
 // ReadArrayOp
 //===------------------------------------------------------------------===//
 
+LogicalResult ReadArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
+  // Ensure any SymbolRef used in the type are valid
+  return verifyTypeResolution(tables, *this, ArrayRef<Type> {getArrRef().getType(), getType()});
+}
+
 LogicalResult ReadArrayOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ReadArrayOpAdaptor adaptor,
     llvm::SmallVectorImpl<Type> &inferredReturnTypes
@@ -512,8 +537,24 @@ bool ReadArrayOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
 }
 
 //===------------------------------------------------------------------===//
+// WriteArrayOp
+//===------------------------------------------------------------------===//
+
+LogicalResult WriteArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
+  // Ensure any SymbolRef used in the type are valid
+  return verifyTypeResolution(
+      tables, *this, ArrayRef<Type> {getArrRef().getType(), getRvalue().getType()}
+  );
+}
+
+//===------------------------------------------------------------------===//
 // ExtractArrayOp
 //===------------------------------------------------------------------===//
+
+LogicalResult ExtractArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
+  // Ensure any SymbolRef used in the type are valid
+  return verifyTypeResolution(tables, *this, getArrRef().getType());
+}
 
 LogicalResult ExtractArrayOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ExtractArrayOpAdaptor adaptor,
@@ -552,14 +593,37 @@ bool ExtractArrayOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
 }
 
 //===------------------------------------------------------------------===//
+// ArrayLengthOp
+//===------------------------------------------------------------------===//
+
+LogicalResult ArrayLengthOp::verifySymbolUses(SymbolTableCollection &tables) {
+  // Ensure any SymbolRef used in the type are valid
+  return verifyTypeResolution(tables, *this, getArrRef().getType());
+}
+
+//===------------------------------------------------------------------===//
 // EmitEqualityOp
 //===------------------------------------------------------------------===//
+
+LogicalResult EmitEqualityOp::verifySymbolUses(SymbolTableCollection &tables) {
+  // Ensure any SymbolRef used in the type are valid
+  return verifyTypeResolution(
+      tables, *this, ArrayRef<Type> {getLhs().getType(), getRhs().getType()}
+  );
+}
 
 Type EmitEqualityOp::inferRHS(Type lhsType) { return lhsType; }
 
 //===------------------------------------------------------------------===//
 // EmitContainmentOp
 //===------------------------------------------------------------------===//
+
+LogicalResult EmitContainmentOp::verifySymbolUses(SymbolTableCollection &tables) {
+  // Ensure any SymbolRef used in the type are valid
+  return verifyTypeResolution(
+      tables, *this, ArrayRef<Type> {getLhs().getType(), getRhs().getType()}
+  );
+}
 
 Type EmitContainmentOp::inferRHS(Type lhsType) {
   assert(llvm::isa<ArrayType>(lhsType)); // per ODS spec of EmitContainmentOp

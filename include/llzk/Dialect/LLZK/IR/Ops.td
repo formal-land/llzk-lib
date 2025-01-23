@@ -207,14 +207,14 @@ def LLZK_ConstReadOp
   let summary = "Read value from a struct/component constant parameter.";
   let description = [{
     This operation reads the value from the named constant parameter of
-    the struct/component in which this op appears. The op itself puts no
-    restriction on the type of this value, instead leaving it to a later
+    the struct/component in which this op appears. The op itself puts
+    some restriction on the type of this value, but leaves it to a later
     type-checking pass to ensure the struct parameters are instantiated
     with types matching the uses of the parameter within the struct.
   }];
 
   let arguments = (ins FlatSymbolRefAttr:$const_name);
-  let results = (outs AnyLLZKType:$val);
+  let results = (outs ConstReadType:$val);
 
   let assemblyFormat = [{ $const_name attr-dict `:` type($val) }];
 }
@@ -304,7 +304,7 @@ def LLZK_CreateStructOp
 def LLZK_CreateArrayOp
     : LLZK_Op<
           "new_array",
-          [Pure,
+          [Pure, DeclareOpInterfaceMethods<SymbolUserOpInterface>,
            DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
            VariadicTypesMatchWith<
                "operand types match result type", "result", "elements",
@@ -349,7 +349,7 @@ def LLZK_CreateArrayOp
     restriction in the parser.
   }];
 
-  let arguments = (ins Variadic<AnyLLZKType>:$elements);
+  let arguments = (ins Variadic<ArrayElemType>:$elements);
   let results = (outs LLZK_ArrayType:$result);
 
   // This uses the custom parseInferredArrayType function to compute the type
@@ -376,7 +376,8 @@ def LLZK_CreateArrayOp
 
 def LLZK_ReadArrayOp
     : LLZK_Op<
-          "readarr", [ArrayTypeElemsUnifyWithResultCustomInfer<"arr_ref">]> {
+          "readarr", [DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+                      ArrayTypeElemsUnifyWithResultCustomInfer<"arr_ref">]> {
   let summary = "Loads a value from a LLZK array";
   let description = [{
     This operation loads the value from an array at position `$index`.
@@ -401,7 +402,7 @@ def LLZK_ReadArrayOp
   }];
 
   let arguments = (ins LLZK_ArrayType:$arr_ref, Variadic<Index>:$indices);
-  let results = (outs AnyLLZKType:$result);
+  let results = (outs ArrayElemType:$result);
 
   let assemblyFormat = [{
     $arr_ref `[` $indices `]` attr-dict `:` type($arr_ref) `,` type($result)
@@ -409,7 +410,8 @@ def LLZK_ReadArrayOp
 }
 
 def LLZK_WriteArrayOp
-    : LLZK_Op<"writearr", [ArrayElemTypeUnifyWith<"arr_ref", "rvalue">]> {
+    : LLZK_Op<"writearr", [DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+                           ArrayElemTypeUnifyWith<"arr_ref", "rvalue">]> {
   let summary = "Writes a value into a LLZK array";
   let description = [{
     This operation writes a value into an array at position `$index`.
@@ -437,7 +439,7 @@ def LLZK_WriteArrayOp
   }];
 
   let arguments = (ins LLZK_ArrayType:$arr_ref, Variadic<Index>:$indices,
-      AnyLLZKType:$rvalue);
+      ArrayElemType:$rvalue);
 
   let assemblyFormat = [{
     $arr_ref `[` $indices `]` `=` $rvalue attr-dict `:` type($arr_ref) `,` type($rvalue)
@@ -445,7 +447,9 @@ def LLZK_WriteArrayOp
 }
 
 def LLZK_ExtractArrayOp
-    : LLZK_Op<"extractarr", [Pure, InferTypeOpAdaptorWithIsCompatible]> {
+    : LLZK_Op<
+          "extractarr", [Pure, InferTypeOpAdaptorWithIsCompatible,
+                         DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Get subarray from a multi-dimensional array.";
   let description = [{
     Takes an N-dimensional array and K indices and extracts the (N-K)-dimensional
@@ -477,7 +481,9 @@ def LLZK_ExtractArrayOp
   }];
 }
 
-def LLZK_ArrayLengthOp : LLZK_Op<"array_len", [Pure]> {
+def LLZK_ArrayLengthOp
+    : LLZK_Op<"array_len", [Pure,
+                            DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "returns the length of an array";
   let description = [{
     This operation returns the size of the specified dimension of an array.
@@ -493,10 +499,10 @@ def LLZK_ArrayLengthOp : LLZK_Op<"array_len", [Pure]> {
     ```
   }];
 
-  let arguments = (ins LLZK_ArrayType:$array, Index:$dim);
+  let arguments = (ins LLZK_ArrayType:$arr_ref, Index:$dim);
   let results = (outs Index:$length);
 
-  let assemblyFormat = "$array `,` $dim `:` type($array) attr-dict";
+  let assemblyFormat = "$arr_ref `,` $dim `:` type($arr_ref) attr-dict";
 }
 
 //===------------------------------------------------------------------===//
@@ -505,7 +511,8 @@ def LLZK_ArrayLengthOp : LLZK_Op<"array_len", [Pure]> {
 
 class LLZK_EmitOp<string mnemonic, list<Trait> traits = []>
     : LLZK_Op<mnemonic,
-              traits#[InStructFunctionNamed<"::llzk::FUNC_NAME_CONSTRAIN">]> {
+              traits#[InStructFunctionNamed<"::llzk::FUNC_NAME_CONSTRAIN">,
+                      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
 
   let assemblyFormat = [{
     $lhs `,` $rhs `:` type($lhs)
@@ -541,9 +548,6 @@ class LLZK_EmitOp<string mnemonic, list<Trait> traits = []>
     }
   }];
 }
-
-def EmitEqType : TypeConstraint<CPred<"::llzk::isValidEmitEqType($_self)">,
-                                "free from struct and string type">;
 
 def LLZK_EmitEqualityOp
     : LLZK_EmitOp<"emit_eq", [Commutative, ElementwiseMappable,

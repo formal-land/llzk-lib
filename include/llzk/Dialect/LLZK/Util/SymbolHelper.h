@@ -7,6 +7,8 @@
 
 #include <llvm/Support/Casting.h>
 
+#include <ranges>
+
 namespace llzk {
 
 llvm::SmallVector<mlir::StringRef> getNames(const mlir::SymbolRefAttr &ref);
@@ -65,38 +67,45 @@ resolveCallable(mlir::SymbolTableCollection &symbolTable, mlir::CallOpInterface 
   return lookupTopLevelSymbol<T>(symbolTable, symbolRef, call.getOperation());
 }
 
-mlir::LogicalResult verifyParamOfType(
-    mlir::SymbolTableCollection &tables, mlir::SymbolRefAttr param, mlir::Type structOrArrayType,
-    mlir::Operation *origin
-);
-
-mlir::LogicalResult verifyParamsOfType(
-    mlir::SymbolTableCollection &tables, mlir::ArrayRef<mlir::Attribute> tyParams,
-    mlir::Type structOrArrayType, mlir::Operation *origin
-);
-
 template <typename T>
 inline mlir::FailureOr<SymbolLookupResult<T>> resolveCallable(mlir::CallOpInterface call) {
   mlir::SymbolTableCollection symbolTable;
   return resolveCallable<T>(symbolTable, call);
 }
 
+/// Ensure that the given symbol (that is used as a parameter of the given type) can be resolved.
+mlir::LogicalResult verifyParamOfType(
+    mlir::SymbolTableCollection &tables, mlir::SymbolRefAttr param, mlir::Type structOrArrayType,
+    mlir::Operation *origin
+);
+
+/// Ensure that any symbols that appear within the given attributes (that are parameters of the
+/// given type) can be resolved.
+mlir::LogicalResult verifyParamsOfType(
+    mlir::SymbolTableCollection &tables, mlir::ArrayRef<mlir::Attribute> tyParams,
+    mlir::Type structOrArrayType, mlir::Operation *origin
+);
+
+/// Ensure that all symbols used within the type can be resolved.
 mlir::FailureOr<StructDefOp> verifyStructTypeResolution(
     mlir::SymbolTableCollection &tables, StructType ty, mlir::Operation *origin
 );
 
+/// Ensure that all symbols used within the given Type instance can be resolved.
 mlir::LogicalResult
-verifyTypeResolution(mlir::SymbolTableCollection &tables, mlir::Type ty, mlir::Operation *origin);
+verifyTypeResolution(mlir::SymbolTableCollection &tables, mlir::Operation *origin, mlir::Type type);
 
+/// Ensure that all symbols used within all Type instances can be resolved.
+template <std::ranges::input_range Range>
 mlir::LogicalResult verifyTypeResolution(
-    mlir::SymbolTableCollection &tables, llvm::ArrayRef<mlir::Type>::iterator start,
-    llvm::ArrayRef<mlir::Type>::iterator end, mlir::Operation *origin
-);
-
-inline mlir::LogicalResult verifyTypeResolution(
-    mlir::SymbolTableCollection &tables, llvm::ArrayRef<mlir::Type> types, mlir::Operation *origin
+    mlir::SymbolTableCollection &tables, mlir::Operation *origin, Range const &types
 ) {
-  return verifyTypeResolution(tables, types.begin(), types.end(), origin);
+  // Check all before returning to present all applicable type errors in one compilation.
+  bool failed = false;
+  for (const auto &t : types) {
+    failed |= mlir::failed(verifyTypeResolution(tables, origin, t));
+  }
+  return mlir::LogicalResult::failure(failed);
 }
 
 } // namespace llzk

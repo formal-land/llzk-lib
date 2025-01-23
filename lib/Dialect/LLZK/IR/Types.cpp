@@ -24,6 +24,8 @@ template <bool AllowStruct, bool AllowString, bool AllowArray> bool isValidTypeI
 template <bool AllowStruct, bool AllowString> bool isValidArrayElemTypeImpl(Type type) {
   // ArrayType element can be any valid type sans ArrayType itself.
   //  Pass through the flags indicating which types are allowed.
+  // [TH]: Maybe the array type should not be excluded beyond the immediate element type itself.
+  //  i.e. should `!llzk.array<2 x !llzk.struct<@A<[!llzk.array<2 x i1>]>>>` be allowed?
   return isValidTypeImpl<AllowStruct, AllowString, false>(type);
 }
 
@@ -48,6 +50,9 @@ template <bool AllowStruct, bool AllowString, bool AllowArray> bool isValidTypeI
 bool isValidType(Type type) { return isValidTypeImpl<true, true, true>(type); }
 
 bool isValidEmitEqType(Type type) { return isValidTypeImpl<false, false, true>(type); }
+
+// Allowed types must align with StructParamTypes (defined below)
+bool isValidConstReadType(Type type) { return isValidTypeImpl<false, false, false>(type); }
 
 bool isValidArrayElemType(Type type) { return isValidArrayElemTypeImpl<true, true>(type); }
 
@@ -186,6 +191,22 @@ public:
   }
 };
 
+/// Helpers to compute the union of multiple TypeList without repetition.
+/// Use as: TypeListUnion<TypeList<...>, TypeList<...>, ...>
+template <class... Ts> struct make_unique {
+  using type = TypeList<Ts...>;
+};
+
+template <class... Ts> struct make_unique<TypeList<>, Ts...> : make_unique<Ts...> {};
+
+template <class U, class... Us, class... Ts>
+struct make_unique<TypeList<U, Us...>, Ts...>
+    : std::conditional_t<
+          (std::is_same_v<U, Us> || ...) || (std::is_same_v<U, Ts> || ...),
+          make_unique<TypeList<Us...>, Ts...>, make_unique<TypeList<Us...>, Ts..., U>> {};
+
+template <class... Ts> using TypeListUnion = typename make_unique<Ts...>::type;
+
 } // namespace
 
 //===------------------------------------------------------------------===//
@@ -219,14 +240,13 @@ FailureOr<SymbolLookupResult<StructDefOp>>
 StructType::getDefinition(SymbolTableCollection &symbolTable, Operation *op) {
   // First ensure this StructType passes verification
   ArrayAttr typeParams = this->getParams();
-  if (failed(StructType::verify([op] { return op->emitError(); }, this->getNameRef(), typeParams)
-      )) {
+  if (failed(StructType::verify([op] { return op->emitError(); }, getNameRef(), typeParams))) {
     return failure();
   }
   // Perform lookup and ensure the symbol references a StructDefOp
   auto res = lookupTopLevelSymbol<StructDefOp>(symbolTable, getNameRef(), op);
   if (failed(res) || !res.value()) {
-    return op->emitError() << "no '" << StructDefOp::getOperationName() << "' named \""
+    return op->emitError() << "could not find '" << StructDefOp::getOperationName() << "' named \""
                            << getNameRef() << "\"";
   }
   // If this StructType contains parameters, make sure they match the number from the StructDefOp.
@@ -380,5 +400,20 @@ ArrayType::cloneWith(std::optional<llvm::ArrayRef<int64_t>> shape, Type elementT
 }
 
 int64_t ArrayType::getNumElements() const { return ShapedType::getNumElements(getShape()); }
+
+//===------------------------------------------------------------------===//
+// Additional Helpers
+//===------------------------------------------------------------------===//
+
+void assertValidAttrForParamOfType(Attribute attr) {
+  // Must be the union of valid attribute types within ArrayType, StructType, and TypeVarType.
+  using TypeVarAttrs = TypeList<SymbolRefAttr>; // per ODS spec of TypeVarType
+  if (!TypeListUnion<ArrayDimensionTypes, StructParamTypes, TypeVarAttrs>::matches(attr)) {
+    llvm::report_fatal_error(
+        "Legal type parameters are inconsistent. Encountered " +
+        attr.getAbstractAttribute().getName()
+    );
+  }
+}
 
 } // namespace llzk
