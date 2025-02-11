@@ -148,7 +148,7 @@ def FuncOp
 
     /// Return the full name for this function from the root module, including
     /// all module and struct scopes.
-    ::mlir::SymbolRefAttr getFullyQualifiedName() const;
+    ::mlir::SymbolRefAttr getFullyQualifiedName();
   }];
   let hasCustomAssemblyFormat = 1;
 
@@ -194,7 +194,8 @@ def ReturnOp
 //===----------------------------------------------------------------------===//
 
 def CallOp
-    : LLZK_Op<"call", [MemRefsNormalizable,
+    : LLZK_Op<"call", [MemRefsNormalizable, AttrSizedOperandSegments,
+                       VerifySizesForMultiAffineOps<1>,
                        DeclareOpInterfaceMethods<CallOpInterface>,
                        DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "call operation";
@@ -206,7 +207,6 @@ def CallOp
     containing the [llzk::LANG_ATTR_NAME] attribute).
 
     Example:
-
     ```llzk
     // Call a global function defined in the root module.
     llzk.call @do_stuff(%0) : (!llzk.struct<@Bob>) -> ()
@@ -216,50 +216,85 @@ def CallOp
     %2 = llzk.call @OtherStruct::@compute(%3, %4) : (index, index) -> !llzk.struct<@OtherStruct>
     llzk.call @OtherStruct::@constrain(%5, %6) : (!llzk.struct<@OtherStruct>, !llzk.felt) -> ()
     ```
+
+    When the return StructType of a `compute()` function uses AffineMapAttr to
+    express struct parameter(s) that depend on a loop variable, the optional
+    instantiation parameter list of this operation must be used to instatiate
+    all AffineMap used as parameters to the StructType.
+
+    Examples:
+    ```llzk
+    #M = affine_map<(i)[] -> (5*i+1)>
+    %r = llzk.call @A::@compute(%x){(%i)} : (!llzk.felt) -> !llzk.struct<@A<[#M]>>
+    ```
   }];
 
-  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyLLZKType>:$operands);
+  let arguments = (ins SymbolRefAttr:$callee,
+      Variadic<AnyLLZKType>:$argOperands,
+      VariadicOfVariadic<Index, "mapOpGroupSizes">:$mapOperands,
+      DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$numDimsPerMap,
+      DenseI32ArrayAttr:$mapOpGroupSizes);
   let results = (outs Variadic<AnyLLZKType>);
 
-  let builders = [OpBuilder<(ins "::llzk::FuncOp":$callee,
-                                CArg<"::mlir::ValueRange", "{}">:$operands),
-                            [{
-                              $_state.addOperands(operands);
-                              $_state.addAttribute("callee", ::mlir::SymbolRefAttr::get(callee));
-                              $_state.addTypes(callee.getFunctionType().getResults());
-                            }]>,
-                  OpBuilder<(ins "::mlir::SymbolRefAttr":$callee,
-                                "::mlir::TypeRange":$results,
-                                CArg<"::mlir::ValueRange", "{}">:$operands),
-                            [{
-                              $_state.addOperands(operands);
-                              $_state.addAttribute("callee", callee);
-                              $_state.addTypes(results);
-                            }]>,
-                  OpBuilder<(ins "::mlir::StringAttr":$callee,
-                                "::mlir::TypeRange":$results,
-                                CArg<"::mlir::ValueRange", "{}">:$operands),
-                            [{
-                              build($_builder, $_state, ::mlir::SymbolRefAttr::get(callee), results, operands);
-                            }]>,
-                  OpBuilder<(ins "::llvm::StringRef":$callee,
-                                "::mlir::TypeRange":$results,
-                                CArg<"::mlir::ValueRange", "{}">:$operands),
-                            [{
-                              build($_builder, $_state, ::mlir::StringAttr::get($_builder.getContext(), callee),
-                                    results, operands);
-                            }]>];
+  let skipDefaultBuilders = 1;
+  let builders =
+      [OpBuilder<(ins "::mlir::TypeRange":$resultTypes,
+           "::mlir::SymbolRefAttr":$callee,
+           CArg<"::mlir::ValueRange", "{}">:$argOperands)>,
+       OpBuilder<(ins "::llzk::FuncOp":$callee,
+                     CArg<"::mlir::ValueRange", "{}">:$argOperands),
+                 [{
+                    build($_builder, $_state, callee.getFunctionType().getResults(),
+                          ::mlir::SymbolRefAttr::get(callee), argOperands);
+                  }]>,
+       OpBuilder<(ins "::mlir::TypeRange":$resultTypes,
+           "::mlir::SymbolRefAttr":$callee,
+           "::llvm::ArrayRef<::mlir::ValueRange>":$mapOperands,
+           "::mlir::DenseI32ArrayAttr":$numDimsPerMap,
+           CArg<"::mlir::ValueRange", "{}">:$argOperands)>,
+       OpBuilder<(ins "::mlir::TypeRange":$resultTypes,
+                     "::mlir::SymbolRefAttr":$callee,
+                     "::llvm::ArrayRef<::mlir::ValueRange>":$mapOperands,
+                     "::llvm::ArrayRef<int32_t>":$numDimsPerMap,
+                     CArg<"::mlir::ValueRange", "{}">:$argOperands),
+                 [{
+                    build($_builder, $_state, resultTypes, callee, mapOperands,
+                          $_builder.getDenseI32ArrayAttr(numDimsPerMap), argOperands);
+                  }]>,
+       OpBuilder<(ins "::llzk::FuncOp":$callee,
+                     "::llvm::ArrayRef<::mlir::ValueRange>":$mapOperands,
+                     "::mlir::DenseI32ArrayAttr":$numDimsPerMap,
+                     CArg<"::mlir::ValueRange", "{}">:$argOperands),
+                 [{
+                    build($_builder, $_state, callee.getFunctionType().getResults(),
+                          ::mlir::SymbolRefAttr::get(callee), mapOperands, numDimsPerMap, argOperands);
+                  }]>,
+       OpBuilder<(ins "::llzk::FuncOp":$callee,
+                     "::llvm::ArrayRef<::mlir::ValueRange>":$mapOperands,
+                     "::llvm::ArrayRef<int32_t>":$numDimsPerMap,
+                     CArg<"::mlir::ValueRange", "{}">:$argOperands),
+                 [{
+                    build($_builder, $_state, callee, mapOperands,
+                          $_builder.getDenseI32ArrayAttr(numDimsPerMap), argOperands);
+                  }]>];
 
   let extraClassDeclaration = [{
     ::mlir::FunctionType getCalleeType();
-
-    operand_iterator arg_operand_begin() { return operand_begin(); }
-    operand_iterator arg_operand_end() { return operand_end(); }
   }];
 
   let assemblyFormat = [{
-    $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
+    $callee `(` $argOperands `)`
+    ( `{` custom<MultiDimAndSymbolList>($mapOperands, $numDimsPerMap)^ `}` )?
+    `:` functional-type($argOperands, results)
+    custom<AttrDictWithWarnings>(attr-dict, prop-dict)
   }];
+
+  // NOTE: In CreateArrayOp, the `verify()` function is declared in order to
+  // call `verifyAffineMapInstantiations()`. However, in this op that check must
+  // happen within `verifySymbolUses()` instead because the target FuncOp must
+  // be resolved to determine if a target function named "compute"/"constrain"
+  // is defined within a StructDefOp or within a ModuleOp because the
+  // verification differs for those cases.
 }
 
 #endif // LLZK_FUNC_OPS

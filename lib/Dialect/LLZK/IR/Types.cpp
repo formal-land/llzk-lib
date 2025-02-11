@@ -72,7 +72,8 @@ namespace {
 bool paramAttrUnify(const Attribute &lhsAttr, const Attribute &rhsAttr) {
   assertValidAttrForParamOfType(lhsAttr);
   assertValidAttrForParamOfType(rhsAttr);
-  // If either attribute is a symbol ref, we assume they unify because a later pass with a
+  // IntegerAttr and AffineMapAttr only unify via equality and the others may. Additionally,
+  //  if either attribute is a symbol ref, we assume they unify because a later pass with a
   //  more involved value analysis is required to check if they are actually the same value.
   if (lhsAttr == rhsAttr || lhsAttr.isa<SymbolRefAttr>() || rhsAttr.isa<SymbolRefAttr>()) {
     return true;
@@ -85,22 +86,22 @@ bool paramAttrUnify(const Attribute &lhsAttr, const Attribute &rhsAttr) {
   }
   return false;
 }
+} // namespace
 
-bool paramsUnify(const ArrayRef<Attribute> &lhsParams, const ArrayRef<Attribute> &rhsParams) {
+bool typeParamsUnify(const ArrayRef<Attribute> &lhsParams, const ArrayRef<Attribute> &rhsParams) {
   return (lhsParams.size() == rhsParams.size()) &&
          std::equal(lhsParams.begin(), lhsParams.end(), rhsParams.begin(), paramAttrUnify);
 }
 
 /// Return `true` iff the two ArrayAttr instances containing StructType or ArrayType parameters
 /// are equivalent or could be equivalent after full instantiation of struct parameters.
-bool paramsUnify(const ArrayAttr &lhsParams, const ArrayAttr &rhsParams) {
+bool typeParamsUnify(const ArrayAttr &lhsParams, const ArrayAttr &rhsParams) {
   if (lhsParams && rhsParams) {
-    return paramsUnify(lhsParams.getValue(), rhsParams.getValue());
+    return typeParamsUnify(lhsParams.getValue(), rhsParams.getValue());
   }
   // When one or the other is null, they're only equivalent if both are null
   return !lhsParams && !rhsParams;
 }
-} // namespace
 
 bool arrayTypesUnify(ArrayType lhs, ArrayType rhs, ArrayRef<llvm::StringRef> rhsRevPrefix) {
   // Check if the element types of the two arrays can unify
@@ -108,7 +109,7 @@ bool arrayTypesUnify(ArrayType lhs, ArrayType rhs, ArrayRef<llvm::StringRef> rhs
     return false;
   }
   // Check if the dimension size attributes unify between the LHS and RHS
-  return paramsUnify(lhs.getDimensionSizes(), rhs.getDimensionSizes());
+  return typeParamsUnify(lhs.getDimensionSizes(), rhs.getDimensionSizes());
 }
 
 bool structTypesUnify(StructType lhs, StructType rhs, ArrayRef<llvm::StringRef> rhsRevPrefix) {
@@ -119,7 +120,7 @@ bool structTypesUnify(StructType lhs, StructType rhs, ArrayRef<llvm::StringRef> 
     return false;
   }
   // Check if the parameters unify between the LHS and RHS
-  return paramsUnify(lhs.getParams(), rhs.getParams());
+  return typeParamsUnify(lhs.getParams(), rhs.getParams());
 }
 
 bool typesUnify(Type lhs, Type rhs, ArrayRef<llvm::StringRef> rhsRevPrefix) {
@@ -229,7 +230,8 @@ namespace {
 //  - Integer constants
 //  - SymbolRef (global constants defined in another module require non-flat ref)
 //  - Type
-using StructParamTypes = TypeList<IntegerAttr, SymbolRefAttr, TypeAttr>;
+//  - AffineMap (for array of non-homogeneous structs)
+using StructParamTypes = TypeList<IntegerAttr, SymbolRefAttr, TypeAttr, AffineMapAttr>;
 
 } // namespace
 
@@ -285,7 +287,8 @@ namespace {
 // Dimensions in the ArrayType must be one of the following:
 //  - Integer constants
 //  - SymbolRef (global constants defined in another module require non-flat ref)
-using ArrayDimensionTypes = TypeList<IntegerAttr, SymbolRefAttr>;
+//  - AffineMap (for array created within a loop where size depends on loop variable)
+using ArrayDimensionTypes = TypeList<IntegerAttr, SymbolRefAttr, AffineMapAttr>;
 
 LogicalResult verifyArrayDimensionSizes(
     llvm::function_ref<InFlightDiagnostic()> emitError, llvm::ArrayRef<Attribute> dimensionSizes
@@ -341,7 +344,7 @@ LogicalResult computeShapeFromDims(
   for (Attribute a : dimensionSizes) {
     if (auto p = a.dyn_cast<IntegerAttr>()) {
       shape.push_back(p.getValue().getSExtValue());
-    } else if (a.isa<SymbolRefAttr>()) {
+    } else if (a.isa<SymbolRefAttr, AffineMapAttr>()) {
       // The ShapedTypeInterface uses 'kDynamic' for dimensions with non-static size.
       shape.push_back(ShapedType::kDynamic);
     } else {

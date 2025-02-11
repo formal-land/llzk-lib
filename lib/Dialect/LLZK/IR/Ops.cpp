@@ -19,9 +19,230 @@
 #define GET_OP_CLASSES
 #include "llzk/Dialect/LLZK/IR/Ops.cpp.inc"
 
+#include <numeric>
+
 namespace llzk {
 
 using namespace mlir;
+
+namespace affineMapHelpers {
+
+namespace {
+template <unsigned N>
+ParseResult parseDimAndSymbolListImpl(
+    OpAsmParser &parser, SmallVector<OpAsmParser::UnresolvedOperand, N> &mapOperands,
+    int32_t &numDims
+) {
+  // Parse the required dimension operands.
+  if (parser.parseOperandList(mapOperands, OpAsmParser::Delimiter::Paren)) {
+    return failure();
+  }
+  // Store number of dimensions for validation by caller.
+  numDims = mapOperands.size();
+
+  // Parse the optional symbol operands.
+  return parser.parseOperandList(mapOperands, OpAsmParser::Delimiter::OptionalSquare);
+}
+
+void printDimAndSymbolListImpl(
+    OpAsmPrinter &printer, Operation *op, OperandRange mapOperands, size_t numDims
+) {
+  printer << '(' << mapOperands.take_front(numDims) << ')';
+  if (mapOperands.size() > numDims) {
+    printer << '[' << mapOperands.drop_front(numDims) << ']';
+  }
+}
+} // namespace
+
+template <unsigned N>
+ParseResult parseDimAndSymbolList(
+    OpAsmParser &parser, SmallVector<OpAsmParser::UnresolvedOperand, N> &mapOperands,
+    IntegerAttr &numDims
+) {
+  int32_t numDimsRes = -1;
+  ParseResult res = parseDimAndSymbolListImpl(parser, mapOperands, numDimsRes);
+  numDims = parser.getBuilder().getIndexAttr(numDimsRes);
+  return res;
+}
+
+void printDimAndSymbolList(
+    OpAsmPrinter &printer, Operation *op, OperandRange mapOperands, IntegerAttr numDims
+) {
+  printDimAndSymbolListImpl(printer, op, mapOperands, numDims.getInt());
+}
+
+ParseResult parseMultiDimAndSymbolList(
+    OpAsmParser &parser, SmallVector<SmallVector<OpAsmParser::UnresolvedOperand>> &multiMapOperands,
+    DenseI32ArrayAttr &numDimsPerMap
+) {
+  SmallVector<int32_t> numDimsPerMapRes;
+  auto parseEach = [&]() -> ParseResult {
+    SmallVector<OpAsmParser::UnresolvedOperand> nextMapOps;
+    int32_t nextMapDims = -1;
+    ParseResult res = parseDimAndSymbolListImpl(parser, nextMapOps, nextMapDims);
+    numDimsPerMapRes.push_back(nextMapDims);
+    multiMapOperands.push_back(nextMapOps);
+    return res;
+  };
+  ParseResult res = parser.parseCommaSeparatedList(AsmParser::Delimiter::None, parseEach);
+
+  numDimsPerMap = parser.getBuilder().getDenseI32ArrayAttr(numDimsPerMapRes);
+  return res;
+}
+
+void printMultiDimAndSymbolList(
+    OpAsmPrinter &printer, Operation *op, OperandRangeRange multiMapOperands,
+    DenseI32ArrayAttr numDimsPerMap
+) {
+  size_t count = numDimsPerMap.size();
+  assert(multiMapOperands.size() == count);
+  llvm::interleaveComma(llvm::seq<size_t>(0, count), printer.getStream(), [&](size_t i) {
+    printDimAndSymbolListImpl(printer, op, multiMapOperands[i], numDimsPerMap[i]);
+  });
+}
+
+ParseResult
+parseAttrDictWithWarnings(OpAsmParser &parser, NamedAttrList &extraAttrs, OperationState &state) {
+  // Replicate what ODS generates w/o the custom<AttrDictWithWarnings> directive
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  if (parser.parseOptionalAttrDict(extraAttrs)) {
+    return failure();
+  }
+  if (failed(state.name.verifyInherentAttrs(extraAttrs, [&]() {
+    return parser.emitError(loc) << "'" << state.name.getStringRef() << "' op ";
+  }))) {
+    return failure();
+  }
+  // Ignore, with warnings, any attributes that are specified and shouldn't be
+  for (StringAttr skipName : state.name.getAttributeNames()) {
+    if (extraAttrs.erase(skipName)) {
+      auto msg =
+          "Ignoring attribute '" + Twine(skipName) + "' because it must be computed automatically.";
+      mlir::emitWarning(parser.getEncodedSourceLoc(loc), msg).report();
+    }
+  }
+  // There is no failure from this last check, only warnings
+  return success();
+}
+
+template <typename ConcreteOp>
+void printAttrDictWithWarnings(
+    OpAsmPrinter &printer, ConcreteOp op, DictionaryAttr extraAttrs,
+    typename ConcreteOp::Properties state
+) {
+  printer.printOptionalAttrDict(extraAttrs.getValue(), ConcreteOp::getAttributeNames());
+}
+
+namespace {
+inline InFlightDiagnostic msgInstantiationGroupAttrMismatch(
+    Operation *op, size_t mapOpGroupSizesCount, size_t mapOperandsSize
+) {
+  return op->emitOpError().append(
+      "map instantiation group count (", mapOperandsSize,
+      ") does not match with length of 'mapOpGroupSizes' attribute (", mapOpGroupSizesCount, ")"
+  );
+}
+} // namespace
+
+LogicalResult verifySizesForMultiAffineOps(
+    Operation *op, int32_t segmentSize, ArrayRef<int32_t> mapOpGroupSizes,
+    OperandRangeRange mapOperands, ArrayRef<int32_t> numDimsPerMap
+) {
+  // Ensure the `mapOpGroupSizes` and `operandSegmentSizes` attributes agree.
+  // NOTE: the ODS generates verifyValueSizeAttr() which ensures 'mapOpGroupSizes' has no negative
+  // elements and its sum is equal to the operand group size (which is similar to this check).
+  int32_t totalMapOpGroupSizes = std::reduce(mapOpGroupSizes.begin(), mapOpGroupSizes.end());
+  if (totalMapOpGroupSizes != segmentSize) {
+    // Since `mapOpGroupSizes` and `segmentSize` are computed this should never happen.
+    return op->emitOpError().append(
+        "number of operands for affine map instantiation (", totalMapOpGroupSizes,
+        ") does not match with the total size (", segmentSize,
+        ") specified in attribute 'operandSegmentSizes'"
+    );
+  }
+
+  // Ensure the size of `mapOperands` and its two list attributes are the same.
+  // This will be true if the op was constructed via parseMultiDimAndSymbolList()
+  //  but when constructed via the build() API, it can be inconsistent.
+  size_t count = mapOpGroupSizes.size();
+  if (mapOperands.size() != count) {
+    return msgInstantiationGroupAttrMismatch(op, count, mapOperands.size());
+  }
+  if (numDimsPerMap.size() != count) {
+    // Tested in CallOpTests.cpp
+    return op->emitOpError().append(
+        "length of 'numDimsPerMap' attribute (", numDimsPerMap.size(),
+        ") does not match with length of 'mapOpGroupSizes' attribute (", count, ")"
+    );
+  }
+
+  // Verify the following:
+  //   1. 'mapOperands' element sizes match 'mapOpGroupSizes' values
+  //   2. each 'numDimsPerMap' is <= corresponding 'mapOpGroupSizes'
+  LogicalResult aggregateResult = success();
+  for (size_t i = 0; i < count; ++i) {
+    auto currMapOpGroupSize = mapOpGroupSizes[i];
+    if (std::cmp_not_equal(mapOperands[i].size(), currMapOpGroupSize)) {
+      // Since `mapOpGroupSizes` is computed this should never happen.
+      aggregateResult = op->emitOpError().append(
+          "map instantiation group ", i, " operand count (", mapOperands[i].size(),
+          ") does not match group ", i, " size in 'mapOpGroupSizes' attribute (",
+          currMapOpGroupSize, ")"
+      );
+    } else if (std::cmp_greater(numDimsPerMap[i], currMapOpGroupSize)) {
+      // Tested in CallOpTests.cpp
+      aggregateResult = op->emitOpError().append(
+          "map instantiation group ", i, " dimension count (", numDimsPerMap[i], ") exceeds group ",
+          i, " size in 'mapOpGroupSizes' attribute (", currMapOpGroupSize, ")"
+      );
+    }
+  }
+  return aggregateResult;
+}
+
+LogicalResult verifyAffineMapInstantiations(
+    OperandRangeRange mapOps, ArrayRef<int32_t> numDimsPerMap, ArrayRef<AffineMapAttr> mapAttrs,
+    Operation *origin
+) {
+  size_t count = numDimsPerMap.size();
+  if (mapOps.size() != count) {
+    return msgInstantiationGroupAttrMismatch(origin, count, mapOps.size());
+  }
+
+  // Ensure there is one OperandRange for each AffineMapAttr
+  if (mapAttrs.size() != count) {
+    // Tested in array_build_fail.llzk, call_with_affinemap_fail.llzk, CallOpTests.cpp, and
+    // CreateArrayOpTests.cpp
+    return origin->emitOpError().append(
+        "map instantiation group count (", count,
+        ") does not match the number of affine map instantiations (", mapAttrs.size(),
+        ") required by the type"
+    );
+  }
+
+  // Ensure the affine map identifier counts match the instantiation.
+  // Rather than immediately returning on failure, we check all dimensions and aggregate to provide
+  // as many errors are possible in a single verifier run.
+  LogicalResult aggregateResult = success();
+  for (size_t i = 0; i < count; ++i) {
+    AffineMap map = mapAttrs[i].getAffineMap();
+    if (std::cmp_not_equal(map.getNumDims(), numDimsPerMap[i])) {
+      // Tested in array_build_fail.llzk and call_with_affinemap_fail.llzk
+      aggregateResult = origin->emitOpError().append(
+          "instantiation of map ", i, " expected ", map.getNumDims(), " but found ",
+          numDimsPerMap[i], " dimension values in ()"
+      );
+    } else if (std::cmp_not_equal(map.getNumInputs(), mapOps[i].size())) {
+      // Tested in array_build_fail.llzk and call_with_affinemap_fail.llzk
+      aggregateResult = origin->emitOpError().append(
+          "instantiation of map ", i, " expected ", map.getNumSymbols(), " but found ",
+          (mapOps[i].size() - numDimsPerMap[i]), " symbol values in []"
+      );
+    }
+  }
+  return aggregateResult;
+}
+} // namespace affineMapHelpers
 
 bool isInStruct(Operation *op) { return succeeded(getParentOfType<StructDefOp>(op)); }
 
@@ -77,6 +298,8 @@ InFlightDiagnostic genCompareErr(StructDefOp &expected, Operation *origin, const
   );
 }
 
+/// Verifies that the given `actualType` matches the `StructDefOp` given (i.e. for the "self" type
+/// parameter and return of the struct functions).
 LogicalResult checkSelfType(
     SymbolTableCollection &tables, StructDefOp &expectedStruct, Type actualType, Operation *origin,
     const char *aspect
@@ -175,6 +398,12 @@ bool StructDefOp::hasParamNamed(StringAttr find) {
     }
   }
   return false;
+}
+
+SymbolRefAttr StructDefOp::getFullyQualifiedName() {
+  auto res = getPathFromRoot(*this);
+  assert(succeeded(res));
+  return res.value();
 }
 
 LogicalResult StructDefOp::verifySymbolUses(SymbolTableCollection &tables) {
@@ -503,6 +732,28 @@ void FeltNonDetOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
 // CreateArrayOp
 //===------------------------------------------------------------------===//
 
+void CreateArrayOp::build(
+    OpBuilder &odsBuilder, OperationState &odsState, ArrayType result, ValueRange elements
+) {
+  odsState.addTypes(result);
+  odsState.addOperands(elements);
+  // This builds CreateArrayOp from a list of elements. In that case, the dimensions of the array
+  // type cannot be defined via an affine map which means there are no affine map operands.
+  affineMapHelpers::buildInstantiationAttrsEmpty<CreateArrayOp>(
+      odsBuilder, odsState, static_cast<int32_t>(elements.size())
+  );
+}
+
+void CreateArrayOp::build(
+    OpBuilder &odsBuilder, OperationState &odsState, ArrayType result,
+    ArrayRef<ValueRange> mapOperands, DenseI32ArrayAttr numDimsPerMap
+) {
+  odsState.addTypes(result);
+  affineMapHelpers::buildInstantiationAttrs<CreateArrayOp>(
+      odsBuilder, odsState, mapOperands, numDimsPerMap
+  );
+}
+
 LogicalResult CreateArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
   // Ensure any SymbolRef used in the type are valid
   return verifyTypeResolution(tables, *this, llvm::cast<Type>(getType()));
@@ -528,14 +779,29 @@ ParseResult CreateArrayOp::parseInferredArrayType(
   if (elements.size() > 0) {
     elementsTypes.append(resultTypeToElementsTypes(resultType));
   }
-  return ParseResult::success();
+  return success();
 }
 
 void CreateArrayOp::printInferredArrayType(
-    AsmPrinter &printer, CreateArrayOp, Operation::operand_range::type_range,
-    Operation::operand_range, Type
+    AsmPrinter &printer, CreateArrayOp, TypeRange, OperandRange, Type
 ) {
   // nothing to print, it's derived and therefore not represented in the output
+}
+
+LogicalResult CreateArrayOp::verify() {
+  Type retTy = getResult().getType();
+  assert(llvm::isa<ArrayType>(retTy)); // per ODS spec of CreateArrayOp
+
+  // Collect the array dimensions that are defined via AffineMapAttr
+  SmallVector<AffineMapAttr> mapAttrs;
+  for (Attribute a : llvm::cast<ArrayType>(retTy).getDimensionSizes()) {
+    if (AffineMapAttr m = dyn_cast<AffineMapAttr>(a)) {
+      mapAttrs.push_back(m);
+    }
+  }
+  return affineMapHelpers::verifyAffineMapInstantiations(
+      getMapOperands(), getNumDimsPerMap(), mapAttrs, *this
+  );
 }
 
 //===------------------------------------------------------------------===//
@@ -589,11 +855,11 @@ LogicalResult ExtractArrayOp::inferReturnTypes(
   size_t numToSkip = adaptor.getIndices().size();
   Type arrRefType = adaptor.getArrRef().getType();
   assert(llvm::isa<ArrayType>(arrRefType)); // per ODS spec of ExtractArrayOp
-  ArrayType arrayType = llvm::cast<ArrayType>(arrRefType);
-  ArrayRef<Attribute> dimSizes = arrayType.getDimensionSizes();
+  ArrayType arrRefArrType = llvm::cast<ArrayType>(arrRefType);
+  ArrayRef<Attribute> arrRefDimSizes = arrRefArrType.getDimensionSizes();
 
   // Check for invalid cases
-  auto compare = numToSkip <=> dimSizes.size();
+  auto compare = numToSkip <=> arrRefDimSizes.size();
   if (compare == 0) {
     return mlir::emitOptionalError(
         location, "'", ExtractArrayOp::getOperationName(),
@@ -610,12 +876,74 @@ LogicalResult ExtractArrayOp::inferReturnTypes(
   // Generate and store reduced array type
   inferredReturnTypes.resize(1);
   inferredReturnTypes[0] =
-      ArrayType::get(arrayType.getElementType(), dimSizes.drop_front(numToSkip));
+      ArrayType::get(arrRefArrType.getElementType(), arrRefDimSizes.drop_front(numToSkip));
   return success();
 }
 
 bool ExtractArrayOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   return singletonTypeListsUnify(l, r);
+}
+
+//===------------------------------------------------------------------===//
+// InsertArrayOp
+//===------------------------------------------------------------------===//
+
+LogicalResult InsertArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
+  // Ensure any SymbolRef used in the types are valid
+  return verifyTypeResolution(
+      tables, *this, ArrayRef<Type> {getArrRef().getType(), getRvalue().getType()}
+  );
+}
+
+LogicalResult InsertArrayOp::verify() {
+  size_t numIndices = getIndices().size();
+
+  Type baseArrRefType = getArrRef().getType();
+  assert(llvm::isa<ArrayType>(baseArrRefType)); // per ODS spec of InsertArrayOp
+  ArrayType baseArrRefArrType = llvm::cast<ArrayType>(baseArrRefType);
+
+  Type rValueType = getRvalue().getType();
+  assert(llvm::isa<ArrayType>(rValueType)); // per ODS spec of InsertArrayOp
+  ArrayType rValueArrType = llvm::cast<ArrayType>(rValueType);
+
+  ArrayRef<Attribute> dimsFromBase = baseArrRefArrType.getDimensionSizes();
+  // Ensure the number of indices specified does not exceed base dimension count.
+  if (numIndices > dimsFromBase.size()) {
+    return emitOpError("cannot select more dimensions than exist in the source array");
+  }
+
+  ArrayRef<Attribute> dimsFromRValue = rValueArrType.getDimensionSizes();
+  ArrayRef<Attribute> dimsFromBaseReduced = dimsFromBase.drop_front(numIndices);
+  // Ensure the rValue dimension count equals the base reduced dimension count
+  auto compare = dimsFromRValue.size() <=> dimsFromBaseReduced.size();
+  if (compare != 0) {
+    return emitOpError().append(
+        "has ", (compare < 0 ? "insufficient" : "too many"), " indexed dimensions: expected ",
+        (dimsFromBase.size() - dimsFromRValue.size()), " but found ", numIndices
+    );
+  }
+
+  // Ensure dimension sizes are compatible (ignoring the indexed dimensions)
+  if (!typeParamsUnify(dimsFromBaseReduced, dimsFromRValue)) {
+    std::string message;
+    llvm::raw_string_ostream ss(message);
+    ss << "cannot unify array dimensions [";
+    llvm::interleaveComma(dimsFromBaseReduced, ss, [&ss](Attribute a) { a.print(ss, true); });
+    ss << "] with [";
+    llvm::interleaveComma(dimsFromRValue, ss, [&ss](Attribute a) { a.print(ss, true); });
+    ss << "]";
+    return emitOpError().append(message);
+  }
+
+  // Ensure element types of the arrays are compatible
+  if (!typesUnify(baseArrRefArrType.getElementType(), rValueArrType.getElementType())) {
+    return emitOpError().append(
+        "incorrect array element type; expected: ", baseArrRefArrType.getElementType(),
+        ", found: ", rValueArrType.getElementType()
+    );
+  }
+
+  return success();
 }
 
 //===------------------------------------------------------------------===//
@@ -672,6 +1000,30 @@ LogicalResult CreateStructOp::verifySymbolUses(SymbolTableCollection &tables) {
   if (failed(checkSelfType(tables, *getParentRes, this->getType(), *this, "result"))) {
     return failure();
   }
+  return success();
+}
+
+//===------------------------------------------------------------------===//
+// ApplyMapOp
+//===------------------------------------------------------------------===//
+
+LogicalResult ApplyMapOp::verify() {
+  // Check input and output dimensions match.
+  AffineMap map = getMap();
+
+  // Verify that the map only produces one result.
+  if (map.getNumResults() != 1) {
+    return emitOpError("must produce exactly one value");
+  }
+
+  // Verify that operand count matches affine map dimension and symbol count.
+  unsigned mapDims = map.getNumDims();
+  if (getNumOperands() != mapDims + map.getNumSymbols()) {
+    return emitOpError("operand count must equal affine map dimension+symbol count");
+  } else if (mapDims != getNumDimsAttr().getInt()) {
+    return emitOpError("dimension operand count must equal affine map dimension count");
+  }
+
   return success();
 }
 

@@ -200,6 +200,14 @@ def LLZK_StructDefOp
     static ::llvm::StringRef getDefaultDialect() {
       return "llzk";
     }
+
+    //===------------------------------------------------------------------===//
+    // Utility Methods
+    //===------------------------------------------------------------------===//
+
+    /// Return the full name for this struct from the root module, including
+    /// any surrounding module scopes.
+    ::mlir::SymbolRefAttr getFullyQualifiedName();
   }];
 
   let hasRegionVerifier = 1;
@@ -306,7 +314,8 @@ def LLZK_CreateStructOp
 def LLZK_CreateArrayOp
     : LLZK_Op<
           "new_array",
-          [Pure, DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+          [Pure, AttrSizedOperandSegments, VerifySizesForMultiAffineOps<1>,
+           DeclareOpInterfaceMethods<SymbolUserOpInterface>,
            DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
            VariadicTypesMatchWith<
                "operand types match result type", "result", "elements",
@@ -318,7 +327,6 @@ def LLZK_CreateArrayOp
     according the shape declared in the type.
 
     Examples:
-
     ```llzk
     %0 = llzk.new_array %a, %b, %c : !llzk.array<3 x !llzk.felt>
 
@@ -349,18 +357,60 @@ def LLZK_CreateArrayOp
     Also note that `std::equal_to` is used in the `VariadicTypesMatchWith`
     trait on this Op so that the verifier function mirrors the aforementioned
     restriction in the parser.
+
+
+    In some cases, the length of an uninitialized array depends on the value
+    of the loop induction variable (i.e. each iteration creates an array with
+    a different size/shape). In that case, an AffineMapAttr can be used to
+    specify the dimension size in the ArrayType and the optional instantiation
+    parameter list of this operation must be used to instatiate all AffineMap
+    used in the array dimensions.
+
+    Examples:
+    ```llzk
+    // Create an uninitialized array with dimension size defined by AffineMap
+    #IdxToLen = affine_map<(i) -> (5*i+1)>
+    %3 = llzk.new_array {(%i)} : !llzk.array<#IdxToLen x index>
+
+    // Create an uninitialized array with multiple dimensions defined by
+    //  AffineMap. The list of instantiation parameters are assigned to
+    //  the AffineMap dimensions left-to-right.
+    #M1 = affine_map<(i)[c] -> (c+i)>
+    #M3 = affine_map<(m,n) -> (5*m+n)>
+    %4 = llzk.new_array{(%i)[%c], (%m,%n)} : !llzk.array<#M1,2,#M3 x i1>
+    ```
   }];
 
-  let arguments = (ins Variadic<ArrayElemType>:$elements);
+  let arguments = (ins Variadic<ArrayElemType>:$elements,
+      VariadicOfVariadic<Index, "mapOpGroupSizes">:$mapOperands,
+      DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$numDimsPerMap,
+      DenseI32ArrayAttr:$mapOpGroupSizes);
   let results = (outs LLZK_ArrayType:$result);
+
+  let skipDefaultBuilders = 1;
+  let builders = [OpBuilder<(ins "::llzk::ArrayType":$result,
+                      CArg<"::mlir::ValueRange", "{}">:$elements)>,
+                  OpBuilder<(ins "::llzk::ArrayType":$result,
+                      "::llvm::ArrayRef<::mlir::ValueRange>":$mapOperands,
+                      "::mlir::DenseI32ArrayAttr":$numDimsPerMap)>,
+                  OpBuilder<
+                      (ins "::llzk::ArrayType":$result,
+                          "::llvm::ArrayRef<::mlir::ValueRange>":$mapOperands,
+                          "::llvm::ArrayRef<int32_t>":$numDimsPerMap),
+                      [{
+                        build($_builder, $_state, result, mapOperands, odsBuilder.getDenseI32ArrayAttr(numDimsPerMap));
+                      }]>];
 
   // This uses the custom parseInferredArrayType function to compute the type
   //  of '$elements' to match the type of '$result', except when '$elements'
   //  is empty, then the type of '$elements' must also be empty (size == 0).
+  // The if-then-else has '$elements' second so that an empty '$elements' list
+  //  can be parsed when neither of these is specified.
   let assemblyFormat = [{
-        $elements `:` type($result)
+        ( `{` custom<MultiDimAndSymbolList>($mapOperands, $numDimsPerMap)^ `}` ) : ( $elements )?
+        `:` type($result)
         `` custom<InferredArrayType>(type($elements), ref($elements), ref(type($result)))
-        attr-dict
+        custom<AttrDictWithWarnings>(attr-dict, prop-dict)
       }];
 
   let extraClassDeclaration = [{
@@ -370,11 +420,13 @@ def LLZK_CreateArrayOp
         ::mlir::Type resultType
     );
     static void printInferredArrayType(::mlir::AsmPrinter &printer, CreateArrayOp,
-        ::mlir::Operation::operand_range::type_range, ::mlir::Operation::operand_range, ::mlir::Type
+        ::mlir::TypeRange, ::mlir::OperandRange, ::mlir::Type
     );
   private:
     static ::llvm::SmallVector<::mlir::Type> resultTypeToElementsTypes(::mlir::Type resultType);
   }];
+
+  let hasVerifier = 1;
 }
 
 def LLZK_ReadArrayOp
@@ -479,6 +531,41 @@ def LLZK_ExtractArrayOp
   let assemblyFormat = [{
     $arr_ref `[` $indices `]` `:` type($arr_ref) attr-dict
   }];
+}
+
+def LLZK_InsertArrayOp
+    : LLZK_Op<"insertarr", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  let summary = "write subarray into a multi-dimensional array";
+  let description = [{
+    This operation takes an N-dimensional array, K indices, and an (N+K)-dimensional
+    array and inserts the N-dimensional array into the (N+K)-dimensional array at the
+    position specified by applying the given indices to the first `K` dimensions of
+    the (N+K)-dimensional array. Use `writearr` instead if `N == 0` (LLZK array type
+    must have at least 1 dimension so a 0-dimensional array cannot exist anyway).
+
+    Inserting 1-D arrays into a 2-D array:
+    ```llzk
+    %c = llzk.new_array : !llzk.array<2,3 x index>
+    // Array %c is uninitialized [[?, ?, ?], [?, ?, ?]]
+    %0 = index.constant 0
+    %a = llzk.new_array %r, %s, %t : !llzk.array<3 x index>
+    llzk.insertarr %c[%0] = %a : !llzk.array<2,3 x index>, !llzk.array<3 x index>
+    // Array %c is now [[%r, %s, %t], [?, ?, ?]]
+    %1 = index.constant 1
+    %b = llzk.new_array %x, %y, %z : !llzk.array<3 x index>
+    llzk.insertarr %c[%1] = %b : !llzk.array<2,3 x index>, !llzk.array<3 x index>
+    // Array %c is now [[%r, %s, %t], [%x, %y, %z]]
+    ```
+  }];
+
+  let arguments = (ins LLZK_ArrayType:$arr_ref, Variadic<Index>:$indices,
+      LLZK_ArrayType:$rvalue);
+
+  let assemblyFormat = [{
+    $arr_ref `[` $indices `]` `=` $rvalue `:` type($arr_ref) `,` type($rvalue) attr-dict
+  }];
+
+  let hasVerifier = 1;
 }
 
 def LLZK_ArrayLengthOp
@@ -752,6 +839,90 @@ def LLZK_FeltToIndexOp : LLZK_Op<"toindex", [Pure]> {
   let arguments = (ins LLZK_FeltType:$value);
   let results = (outs Index:$result);
   let assemblyFormat = [{ $value attr-dict }];
+}
+
+//===------------------------------------------------------------------===//
+// Other operators
+//===------------------------------------------------------------------===//
+
+def LLZK_ApplyMapOp : LLZK_Op<"applymap", [Pure]> {
+  let summary = "apply an AffineMap";
+  let description = [{
+    This operation applies an AffineMap to a list of SSA values, yielding a single
+    SSA value. The number of dimension and symbol arguments must be equal to the
+    respective number of dimensional and symbolic inputs to the AffineMap; the
+    AffineMap has to be one-dimensional, and so this operation always returns one
+    value. The input operands and result all have `index` type.
+
+    Named map example:
+    ```llzk
+    #map10 = affine_map<(d0, d1) -> (d0 floordiv 8 + d1 floordiv 128)>
+    ...
+    %1 = llzk.applymap(%s, %t) #map10
+    ```
+  
+    Inline example:
+    ```llzk
+    %2 = llzk.applymap(%42)[%n] affine_map<(i)[s0] -> (i+s0)>
+    ```
+  }];
+
+  let arguments = (ins AffineMapAttr:$map, Variadic<Index>:$mapOperands,
+      IndexAttr:$numDims);
+  let results = (outs Index);
+
+  let skipDefaultBuilders = 1;
+  let builders = [OpBuilder<(ins "::mlir::AffineMapAttr":$map,
+                                CArg<"::mlir::ValueRange", "{}">:$mapOperands),
+                            [{
+                  $_state.addOperands(mapOperands);
+                  Properties &props = $_state.getOrAddProperties<Properties>();
+                  props.setMap(map);
+                  props.setNumDims($_builder.getIntegerAttr($_builder.getIndexType(),
+                                                            map.getAffineMap().getNumDims()));
+                  $_state.addTypes($_builder.getIndexType());
+                }]>,
+                  OpBuilder<(ins "::mlir::AffineMap":$map,
+                                CArg<"::mlir::ValueRange", "{}">:$mapOperands),
+                            [{
+                  build($_builder, $_state, ::mlir::AffineMapAttr::get(map), mapOperands);
+                }]>,
+                  OpBuilder<(ins "::mlir::AffineExpr":$expr,
+                                CArg<"::mlir::ValueRange", "{}">:$mapOperands),
+                            [{
+                  auto map = ::mlir::AffineMap::inferFromExprList({expr}).front();
+                  build($_builder, $_state, map, mapOperands);
+                }]>];
+
+  let assemblyFormat = [{
+    custom<DimAndSymbolList>($mapOperands, $numDims) $map attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns the affine map to be applied by this operation.
+    ::mlir::AffineMap inline getAffineMap() { return getMap(); }
+
+    /// Returns the affine value map computed from this operation.
+    ::mlir::affine::AffineValueMap getAffineValueMap() {
+      return ::mlir::affine::AffineValueMap(getAffineMap(), getOperands(), getResult());
+    }
+
+    /// Returns all dimension operands.
+    ::mlir::ValueRange getDimOperands() {
+      return ::mlir::OperandRange{
+                          getOperands().begin(),
+                          getOperands().begin() + getMap().getNumDims()};
+    }
+
+    /// Returns all symbol operands.
+    ::mlir::ValueRange getSymbolOperands() {
+      return ::mlir::OperandRange{
+                          getOperands().begin() + getMap().getNumDims(),
+                          getOperands().end()};
+    }
+  }];
 }
 
 #endif // LLZK_OPS

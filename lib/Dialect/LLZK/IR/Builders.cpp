@@ -8,23 +8,28 @@ namespace llzk {
 using namespace mlir;
 
 OwningOpRef<ModuleOp> createLLZKModule(MLIRContext *context, Location loc) {
-  auto dialect = context->getOrLoadDialect<llzk::LLZKDialect>();
-  if (!dialect) {
-    llvm::report_fatal_error("Could not load LLZK dialect!");
-  }
-  auto langAttr = StringAttr::get(context, dialect->getNamespace());
   auto mod = ModuleOp::create(loc);
-  mod->setAttr(llzk::LANG_ATTR_NAME, langAttr);
+  addLangAttrForLLZKDialect(mod);
   return mod;
 }
 
-OwningOpRef<ModuleOp> createLLZKModule(MLIRContext *context) {
-  return createLLZKModule(context, UnknownLoc::get(context));
+void addLangAttrForLLZKDialect(mlir::ModuleOp mod) {
+  MLIRContext *ctx = mod.getContext();
+  if (auto dialect = ctx->getOrLoadDialect<LLZKDialect>()) {
+    mod->setAttr(LANG_ATTR_NAME, StringAttr::get(ctx, dialect->getNamespace()));
+  } else {
+    llvm::report_fatal_error("Could not load LLZK dialect!");
+  }
 }
 
 /* ModuleBuilder */
 
-ModuleBuilder::ModuleBuilder(ModuleOp m) : context(m.getContext()), rootModule(m) {}
+void ModuleBuilder::ensureNoSuchGlobalFunc(std::string_view funcName) {
+  if (globalFuncMap.find(funcName) != globalFuncMap.end()) {
+    auto error_message = "global function " + Twine(funcName) + " already exists!";
+    llvm::report_fatal_error(error_message);
+  }
+}
 
 void ModuleBuilder::ensureNoSuchStruct(std::string_view structName) {
   if (structMap.find(structName) != structMap.end()) {
@@ -61,12 +66,21 @@ void ModuleBuilder::ensureConstrainFnExists(std::string_view structName) {
   }
 }
 
-ModuleBuilder &ModuleBuilder::insertEmptyStruct(std::string_view structName, Location loc) {
+ModuleBuilder &
+ModuleBuilder::insertEmptyStruct(std::string_view structName, Location loc, int numStructParams) {
   ensureNoSuchStruct(structName);
 
   OpBuilder opBuilder(rootModule.getBody(), rootModule.getBody()->begin());
   auto structNameAtrr = StringAttr::get(context, structName);
-  auto structDef = opBuilder.create<llzk::StructDefOp>(loc, structNameAtrr, nullptr);
+  ArrayAttr structParams = nullptr;
+  if (numStructParams >= 0) {
+    SmallVector<Attribute> paramNames;
+    for (int i = 0; i < numStructParams; ++i) {
+      paramNames.push_back(FlatSymbolRefAttr::get(context, "T" + std::to_string(i)));
+    }
+    structParams = opBuilder.getArrayAttr(paramNames);
+  }
+  auto structDef = opBuilder.create<StructDefOp>(loc, structNameAtrr, structParams);
   // populate the initial region
   auto &region = structDef.getRegion();
   (void)region.emplaceBlock();
@@ -75,13 +89,13 @@ ModuleBuilder &ModuleBuilder::insertEmptyStruct(std::string_view structName, Loc
   return *this;
 }
 
-ModuleBuilder &ModuleBuilder::insertComputeFn(llzk::StructDefOp op, Location loc) {
+ModuleBuilder &ModuleBuilder::insertComputeFn(StructDefOp op, Location loc) {
   ensureNoSuchComputeFn(op.getName());
 
   OpBuilder opBuilder(op.getBody());
 
-  auto fnOp = opBuilder.create<llzk::FuncOp>(
-      loc, StringAttr::get(context, llzk::FUNC_NAME_COMPUTE),
+  auto fnOp = opBuilder.create<FuncOp>(
+      loc, StringAttr::get(context, FUNC_NAME_COMPUTE),
       FunctionType::get(context, {}, {op.getType()})
   );
   fnOp.addEntryBlock();
@@ -89,13 +103,13 @@ ModuleBuilder &ModuleBuilder::insertComputeFn(llzk::StructDefOp op, Location loc
   return *this;
 }
 
-ModuleBuilder &ModuleBuilder::insertConstrainFn(llzk::StructDefOp op, Location loc) {
+ModuleBuilder &ModuleBuilder::insertConstrainFn(StructDefOp op, Location loc) {
   ensureNoSuchConstrainFn(op.getName());
 
   OpBuilder opBuilder(op.getBody());
 
-  auto fnOp = opBuilder.create<llzk::FuncOp>(
-      loc, StringAttr::get(context, llzk::FUNC_NAME_CONSTRAIN),
+  auto fnOp = opBuilder.create<FuncOp>(
+      loc, StringAttr::get(context, FUNC_NAME_CONSTRAIN),
       FunctionType::get(context, {op.getType()}, {})
   );
   fnOp.addEntryBlock();
@@ -103,9 +117,8 @@ ModuleBuilder &ModuleBuilder::insertConstrainFn(llzk::StructDefOp op, Location l
   return *this;
 }
 
-ModuleBuilder &ModuleBuilder::insertComputeCall(
-    llzk::StructDefOp caller, llzk::StructDefOp callee, Location callLoc
-) {
+ModuleBuilder &
+ModuleBuilder::insertComputeCall(StructDefOp caller, StructDefOp callee, Location callLoc) {
   ensureComputeFnExists(caller.getName());
   ensureComputeFnExists(callee.getName());
 
@@ -113,13 +126,13 @@ ModuleBuilder &ModuleBuilder::insertComputeCall(
   auto calleeFn = computeFnMap.at(callee.getName());
 
   OpBuilder builder(callerFn.getBody());
-  builder.create<llzk::CallOp>(callLoc, calleeFn.getFullyQualifiedName(), ValueRange {});
+  builder.create<CallOp>(callLoc, calleeFn.getResultTypes(), calleeFn.getFullyQualifiedName());
   updateComputeReachability(caller, callee);
   return *this;
 }
 
 ModuleBuilder &ModuleBuilder::insertConstrainCall(
-    llzk::StructDefOp caller, llzk::StructDefOp callee, Location callLoc
+    StructDefOp caller, StructDefOp callee, Location callLoc, Location fieldDefLoc
 ) {
   ensureConstrainFnExists(caller.getName());
   ensureConstrainFnExists(callee.getName());
@@ -136,22 +149,35 @@ ModuleBuilder &ModuleBuilder::insertConstrainCall(
   // Insert the field declaration op
   {
     OpBuilder builder(caller.getBody());
-    /// TODO: add a specific location for this declaration?
-    builder.create<llzk::FieldDefOp>(UnknownLoc::get(context), fieldName, calleeTy);
+    builder.create<FieldDefOp>(fieldDefLoc, fieldName, calleeTy);
   }
 
   // Insert the constrain function ops
   {
     OpBuilder builder(callerFn.getBody());
 
-    auto field = builder.create<llzk::FieldReadOp>(
+    auto field = builder.create<FieldReadOp>(
         callLoc, calleeTy,
         callerFn.getBody().getArgument(0), // first arg is self
         fieldName
     );
-    builder.create<llzk::CallOp>(callLoc, calleeFn.getFullyQualifiedName(), ValueRange {field});
+    builder.create<CallOp>(
+        callLoc, TypeRange {}, calleeFn.getFullyQualifiedName(), ValueRange {field}
+    );
   }
   updateConstrainReachability(caller, callee);
+  return *this;
+}
+
+ModuleBuilder &
+ModuleBuilder::insertGlobalFunc(std::string_view funcName, FunctionType type, Location loc) {
+  ensureNoSuchGlobalFunc(funcName);
+
+  OpBuilder opBuilder(rootModule.getBody(), rootModule.getBody()->begin());
+  auto funcDef = opBuilder.create<FuncOp>(loc, funcName, type);
+  (void)funcDef.addEntryBlock();
+  globalFuncMap[funcName] = funcDef;
+
   return *this;
 }
 
