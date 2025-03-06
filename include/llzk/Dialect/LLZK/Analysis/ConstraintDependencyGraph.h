@@ -1,6 +1,8 @@
 #pragma once
 
+#include "llzk/Dialect/LLZK/Analysis/AnalysisWrappers.h"
 #include "llzk/Dialect/LLZK/Analysis/ConstrainRef.h"
+#include "llzk/Dialect/LLZK/Analysis/ConstrainRefLattice.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/LLZK/Util/Compare.h"
 #include "llzk/Dialect/LLZK/Util/ErrorHelper.h"
@@ -22,9 +24,51 @@ class DataFlowSolver;
 
 namespace llzk {
 
-class ConstrainRefLatticeValue;
-
 using ConstrainRefRemappings = std::vector<std::pair<ConstrainRef, ConstrainRefLatticeValue>>;
+
+/// @brief The dataflow analysis that computes the set of references that
+/// LLZK operations use and produce. The analysis is simple: any operation will
+/// simply output a union of its input references, regardless of what type of
+/// operation it performs, as the analysis is operator-insensitive.
+class ConstrainRefAnalysis : public dataflow::DenseForwardDataFlowAnalysis<ConstrainRefLattice> {
+public:
+  using dataflow::DenseForwardDataFlowAnalysis<ConstrainRefLattice>::DenseForwardDataFlowAnalysis;
+
+  void visitCallControlFlowTransfer(
+      mlir::CallOpInterface call, dataflow::CallControlFlowAction action,
+      const ConstrainRefLattice &before, ConstrainRefLattice *after
+  ) override;
+
+  /// @brief Propagate constrain reference lattice values from operands to results.
+  /// @param op
+  /// @param before
+  /// @param after
+  void visitOperation(
+      mlir::Operation *op, const ConstrainRefLattice &before, ConstrainRefLattice *after
+  ) override;
+
+protected:
+  void setToEntryState(ConstrainRefLattice *lattice) override {
+    // the entry state is empty, so do nothing.
+  }
+
+  // Perform a standard union of operands into the results value.
+  mlir::ChangeResult fallbackOpUpdate(
+      mlir::Operation *op, const ConstrainRefLattice::ValueMap &operandVals,
+      const ConstrainRefLattice &before, ConstrainRefLattice *after
+  );
+
+  // Perform the update for either a readarr op or an extractarr op, which
+  // operate very similarly: index into the first operand using a variable number
+  // of provided indices.
+  void arraySubdivisionOpUpdate(
+      mlir::Operation *op, const ConstrainRefLattice::ValueMap &operandVals,
+      const ConstrainRefLattice &before, ConstrainRefLattice *after
+  );
+
+private:
+  mlir::SymbolTableCollection tables;
+};
 
 /// @brief A dependency graph of constraints enforced by an LLZK struct.
 ///
@@ -80,7 +124,7 @@ public:
   /// @return A CDG that contains only translated references. Non-constant references with
   /// no translation are omitted. This omissions allows calling components to ignore internal
   /// references within subcomponents that are inaccessible to the caller.
-  ConstraintDependencyGraph translate(ConstrainRefRemappings translation);
+  ConstraintDependencyGraph translate(ConstrainRefRemappings translation) const;
 
   /// @brief Get the values that are connected to the given ref via emitted constraints.
   /// This method looks for constraints to the value in the ref and constraints to any
@@ -144,44 +188,42 @@ private:
   void walkConstrainOp(mlir::DataFlowSolver &solver, mlir::Operation *emitOp);
 };
 
+/// @brief An analysis wrapper around the ConstraintDependencyGraph for a given struct.
+/// This analysis is a StructDefOp-level analysis that should not be directly
+/// interacted with---rather, it is a utility used by the ConstraintDependencyGraphModuleAnalysis
+/// that helps use MLIR's AnalysisManager to cache dependencies for sub-components.
+class ConstraintDependencyGraphStructAnalysis
+    : public StructAnalysis<ConstraintDependencyGraph, NoContext> {
+public:
+  using StructAnalysis::StructAnalysis;
+
+  mlir::LogicalResult runAnalysis(
+      mlir::DataFlowSolver &solver, mlir::AnalysisManager &moduleAnalysisManager, NoContext &_
+  ) override {
+    return runAnalysis(solver, moduleAnalysisManager);
+  }
+
+  /// @brief Construct a CDG, using the module's analysis manager to query
+  /// ConstraintDependencyGraph objects for nested components.
+  mlir::LogicalResult
+  runAnalysis(mlir::DataFlowSolver &solver, mlir::AnalysisManager &moduleAnalysisManager);
+};
+
 /// @brief A module-level analysis for constructing ConstraintDependencyGraph objects for
 /// all structs in the given LLZK module.
-class ConstraintDependencyGraphModuleAnalysis {
-  /// Using a map, not an unordered map, to control sorting order for iteration.
-  using DependencyMap = std::map<
-      StructDefOp, std::shared_ptr<ConstraintDependencyGraph>, OpLocationLess<StructDefOp>>;
+class ConstraintDependencyGraphModuleAnalysis
+    : public ModuleAnalysis<
+          ConstraintDependencyGraph, NoContext, ConstraintDependencyGraphStructAnalysis> {
 
 public:
-  /// @brief Computes ConstraintDependencyGraph objects for all structs contained within the
-  /// given op, if the op is a module op.
-  /// @param op The top-level op. If op is not an LLZK-compliant mlir::ModuleOp, the
-  /// analysis will fail.
-  /// @param am The analysis manager used to query sub-analyses per StructDefOperation.
-  ConstraintDependencyGraphModuleAnalysis(mlir::Operation *op, mlir::AnalysisManager &am);
+  using ModuleAnalysis::ModuleAnalysis;
 
-  bool hasCDG(StructDefOp op) const { return dependencies.find(op) != dependencies.end(); }
-  ConstraintDependencyGraph &getCDG(StructDefOp op) {
-    ensureCDGCreated(op);
-    return *dependencies.at(op);
-  }
-  const ConstraintDependencyGraph &getCDG(StructDefOp op) const {
-    ensureCDGCreated(op);
-    return *dependencies.at(op);
+protected:
+  void initializeSolver(mlir::DataFlowSolver &solver) override {
+    (void)solver.load<ConstrainRefAnalysis>();
   }
 
-  DependencyMap::iterator begin() { return dependencies.begin(); }
-  DependencyMap::iterator end() { return dependencies.end(); }
-  DependencyMap::const_iterator cbegin() const { return dependencies.cbegin(); }
-  DependencyMap::const_iterator cend() const { return dependencies.cend(); }
-
-private:
-  DependencyMap dependencies;
-
-  /// @brief Ensures that the given struct has a CDG.
-  /// @param op The struct to ensure has a CDG.
-  void ensureCDGCreated(StructDefOp op) const {
-    ensure(hasCDG(op), "CDG does not exist for StructDefOp " + mlir::Twine(op.getName()));
-  }
+  NoContext getContext() override { return {}; }
 };
 
 } // namespace llzk

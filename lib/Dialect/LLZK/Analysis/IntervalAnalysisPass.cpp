@@ -1,42 +1,42 @@
-/**
- * The contents of this file are adapted from llvm/lib/Analysis/CallGraph.cpp
- */
 #include "llzk/Dialect/LLZK/Analysis/AnalysisPasses.h"
-#include "llzk/Dialect/LLZK/Analysis/ConstraintDependencyGraph.h"
+#include "llzk/Dialect/LLZK/Analysis/IntervalAnalysis.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/LLZK/Util/SymbolHelper.h"
 
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/Support/Debug.h>
 #include <llvm/Support/ErrorHandling.h>
 
 namespace llzk {
 
-#define GEN_PASS_DEF_CONSTRAINTDEPENDENCYGRAPHPRINTERPASS
+#define GEN_PASS_DECL_INTERVALANALYSISPRINTERPASS
+#define GEN_PASS_DEF_INTERVALANALYSISPRINTERPASS
 #include "llzk/Dialect/LLZK/Analysis/AnalysisPasses.h.inc"
 
-class ConstraintDependencyGraphPrinterPass
-    : public impl::ConstraintDependencyGraphPrinterPassBase<ConstraintDependencyGraphPrinterPass> {
+class IntervalAnalysisPrinterPass
+    : public impl::IntervalAnalysisPrinterPassBase<IntervalAnalysisPrinterPass> {
   llvm::raw_ostream &os;
 
 public:
-  explicit ConstraintDependencyGraphPrinterPass(llvm::raw_ostream &ostream)
-      : impl::ConstraintDependencyGraphPrinterPassBase<ConstraintDependencyGraphPrinterPass>(),
-        os(ostream) {}
+  explicit IntervalAnalysisPrinterPass(llvm::raw_ostream &ostream)
+      : impl::IntervalAnalysisPrinterPassBase<IntervalAnalysisPrinterPass>(), os(ostream) {}
 
 protected:
   void runOnOperation() override {
     markAllAnalysesPreserved();
 
     if (!mlir::isa<mlir::ModuleOp>(getOperation())) {
-      auto msg = "ConstraintDependencyGraphPrinterPass error: should be run on ModuleOp!";
+      auto msg = "IntervalAnalysisPrinterPass error: should be run on ModuleOp!";
       getOperation()->emitError(msg);
       llvm::report_fatal_error(msg);
     }
 
-    auto &cs = getAnalysis<ConstraintDependencyGraphModuleAnalysis>();
+    auto &mia = getAnalysis<ModuleIntervalAnalysis>();
+    mia.setField(Field::getField(fieldName.c_str()));
     auto am = getAnalysisManager();
-    cs.runAnalysis(am);
-    for (auto &[s, cdg] : cs) {
+    mia.runAnalysis(am);
+
+    for (auto &[s, si] : mia) {
       auto &structDef = const_cast<StructDefOp &>(s);
       auto fullName = getPathFromTopRoot(structDef);
       ensure(
@@ -44,14 +44,14 @@ protected:
           "could not resolve fully qualified name of struct " + mlir::Twine(structDef.getName())
       );
       os << fullName.value() << ' ';
-      cdg.get().print(os);
+      si.get().print(os, printSolverConstraints);
     }
   }
 };
 
 std::unique_ptr<mlir::Pass>
-createConstraintDependencyGraphPrinterPass(llvm::raw_ostream &os = llvm::errs()) {
-  return std::make_unique<ConstraintDependencyGraphPrinterPass>(os);
+createIntervalAnalysisPrinterPass(llvm::raw_ostream &os = llvm::errs()) {
+  return std::make_unique<IntervalAnalysisPrinterPass>(os);
 }
 
 } // namespace llzk

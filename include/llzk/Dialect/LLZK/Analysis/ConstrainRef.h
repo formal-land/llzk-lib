@@ -1,5 +1,6 @@
 #pragma once
 
+#include "llzk/Dialect/LLZK/Analysis/AbstractLatticeValue.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/LLZK/Util/ErrorHelper.h"
 #include "llzk/Dialect/LLZK/Util/Hash.h"
@@ -253,8 +254,44 @@ private:
 
 mlir::raw_ostream &operator<<(mlir::raw_ostream &os, const ConstrainRef &rhs);
 
-using ConstrainRefSet = std::unordered_set<ConstrainRef, ConstrainRef::Hash>;
+/* ConstrainRefSet */
 
-mlir::raw_ostream &operator<<(mlir::raw_ostream &os, const ConstrainRefSet &rhs);
+class ConstrainRefSet : public std::unordered_set<ConstrainRef, ConstrainRef::Hash> {
+  using Base = std::unordered_set<ConstrainRef, ConstrainRef::Hash>;
+
+public:
+  using Base::Base;
+
+  ConstrainRefSet &join(const ConstrainRefSet &rhs);
+
+  friend mlir::raw_ostream &operator<<(mlir::raw_ostream &os, const ConstrainRefSet &rhs);
+};
+
+static_assert(
+    dataflow::ScalarLatticeValue<ConstrainRefSet>,
+    "ConstrainRefSet must satisfy the ScalarLatticeValue requirements"
+);
 
 } // namespace llzk
+
+namespace llvm {
+
+template <> struct DenseMapInfo<llzk::ConstrainRef> {
+  static llzk::ConstrainRef getEmptyKey() {
+    return llzk::ConstrainRef(mlir::BlockArgument(reinterpret_cast<mlir::detail::ValueImpl *>(1)));
+  }
+  static inline llzk::ConstrainRef getTombstoneKey() {
+    return llzk::ConstrainRef(mlir::BlockArgument(reinterpret_cast<mlir::detail::ValueImpl *>(2)));
+  }
+  static unsigned getHashValue(const llzk::ConstrainRef &ref) {
+    if (ref == getEmptyKey() || ref == getTombstoneKey()) {
+      return llvm::hash_value(ref.getBlockArgument().getAsOpaquePointer());
+    }
+    return llzk::ConstrainRef::Hash {}(ref);
+  }
+  static bool isEqual(const llzk::ConstrainRef &lhs, const llzk::ConstrainRef &rhs) {
+    return lhs == rhs;
+  }
+};
+
+} // namespace llvm
