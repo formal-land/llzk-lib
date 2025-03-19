@@ -467,7 +467,7 @@ LogicalResult StructDefOp::verifyRegions() {
     // Verify the following:
     // 1. The only ops within the body are field and function definitions
     // 2. The only functions defined in the struct are `compute()` and `constrain()`
-    auto emitError = [this] { return this->emitOpError(); };
+    OwningEmitErrorFn emitError = getEmitOpErrFn(this);
     for (Operation &op : getBody().front()) {
       if (!llvm::isa<FieldDefOp>(op)) {
         if (FuncOp funcDef = llvm::dyn_cast<FuncOp>(op)) {
@@ -627,8 +627,6 @@ void FieldDefOp::build(
   assert(resultTypes.size() == 0u && "mismatched number of return types");
   odsState.addTypes(resultTypes);
 }
-
-bool FieldDefOp::hasPublicAttr() { return getOperation()->hasAttr(PublicAttr::name); }
 void FieldDefOp::setPublicAttr(bool newValue) {
   if (newValue) {
     getOperation()->setAttr(PublicAttr::name, PublicAttr::get(getContext()));
@@ -802,7 +800,7 @@ llvm::SmallVector<Type> CreateArrayOp::resultTypeToElementsTypes(Type resultType
 }
 
 ParseResult CreateArrayOp::parseInferredArrayType(
-    AsmParser &parser, llvm::SmallVector<Type, 1> &elementsTypes,
+    OpAsmParser &parser, llvm::SmallVector<Type, 1> &elementsTypes,
     ArrayRef<OpAsmParser::UnresolvedOperand> elements, Type resultType
 ) {
   assert(elementsTypes.size() == 0); // it was not yet initialized
@@ -815,7 +813,7 @@ ParseResult CreateArrayOp::parseInferredArrayType(
 }
 
 void CreateArrayOp::printInferredArrayType(
-    AsmPrinter &printer, CreateArrayOp, TypeRange, OperandRange, Type
+    OpAsmPrinter &printer, CreateArrayOp, TypeRange, OperandRange, Type
 ) {
   // nothing to print, it's derived and therefore not represented in the output
 }
