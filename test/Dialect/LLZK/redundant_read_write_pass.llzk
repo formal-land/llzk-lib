@@ -1,0 +1,338 @@
+// RUN: llzk-opt -split-input-file -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+
+module attributes {veridise.lang = "llzk"} {
+
+  llzk.struct @Subcomponent {
+    func @compute() -> !llzk.struct<@Subcomponent> {
+      %self = new_struct : !llzk.struct<@Subcomponent>
+      return %self : !llzk.struct<@Subcomponent>
+    }
+    func @constrain(%self: !llzk.struct<@Subcomponent>) { return }
+  }
+
+  llzk.struct @Component {
+    field @sub1 : !llzk.struct<@Subcomponent>
+    field @sub2 : !llzk.struct<@Subcomponent>
+
+    func @compute() -> !llzk.struct<@Component> {
+      %self = new_struct : !llzk.struct<@Component>
+      // All these reads are unused, so they will be removed
+      %sub1 = readf %self[@sub1] : !llzk.struct<@Component>, !llzk.struct<@Subcomponent>
+      %sub2 = readf %self[@sub2] : !llzk.struct<@Component>, !llzk.struct<@Subcomponent>
+      %sub3 = readf %self[@sub2] : !llzk.struct<@Component>, !llzk.struct<@Subcomponent>
+      return %self : !llzk.struct<@Component>
+    }
+    func @constrain(%self: !llzk.struct<@Component>) { return }
+  }
+}
+
+// CHECK-LABEL: llzk.struct @Subcomponent {
+// CHECK-NEXT:    func @compute() -> !llzk.struct<@Subcomponent> {
+// CHECK-NEXT:      %[[VAL_0:.*]] = new_struct : <@Subcomponent>
+// CHECK-NEXT:      return %[[VAL_0]] : !llzk.struct<@Subcomponent>
+// CHECK-NEXT:    }
+// CHECK-NEXT:    func @constrain(%[[VAL_1:.*]]: !llzk.struct<@Subcomponent>) {
+// CHECK-NEXT:      return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
+// CHECK-LABEL: llzk.struct @Component {
+// CHECK-NEXT:    field @sub1 : !llzk.struct<@Subcomponent>
+// CHECK-NEXT:    field @sub2 : !llzk.struct<@Subcomponent>
+// CHECK-NEXT:    func @compute() -> !llzk.struct<@Component> {
+// CHECK-NEXT:      %[[VAL_0:.*]] = new_struct : <@Component>
+// CHECK-NEXT:      return %[[VAL_0]] : !llzk.struct<@Component>
+// CHECK-NEXT:    }
+// CHECK-NEXT:    func @constrain(%[[VAL_1:.*]]: !llzk.struct<@Component>) {
+// CHECK-NEXT:      return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
+// -----
+
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @Component {
+    field @f : !llzk.felt
+
+    func @compute(%arg : !llzk.felt) -> !llzk.struct<@Component> {
+      %self = new_struct : !llzk.struct<@Component>
+      writef %self[@f] = %arg: !llzk.struct<@Component>, !llzk.felt
+      // redundant write
+      writef %self[@f] = %arg: !llzk.struct<@Component>, !llzk.felt
+      return %self : !llzk.struct<@Component>
+    }
+    func @constrain(%self: !llzk.struct<@Component>, %arg : !llzk.felt) { return }
+  }
+}
+
+// CHECK-LABEL: llzk.struct @Component {
+// CHECK-NEXT:    field @f : !llzk.felt
+// CHECK-NEXT:    func @compute(%[[VAL_0:.*]]: !llzk.felt) -> !llzk.struct<@Component> {
+// CHECK-NEXT:      %[[VAL_1:.*]] = new_struct : <@Component>
+// CHECK-NEXT:      writef %[[VAL_1]][@f] = %[[VAL_0]] : <@Component>, !llzk.felt
+// CHECK-NEXT:      return %[[VAL_1]] : !llzk.struct<@Component>
+// CHECK-NEXT:    }
+// CHECK-NEXT:    func @constrain(%[[VAL_2:.*]]: !llzk.struct<@Component>, %[[VAL_3:.*]]: !llzk.felt) {
+// CHECK-NEXT:      return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
+// -----
+
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @Component {
+    field @arr : !llzk.array<3 x !llzk.felt>
+
+    func @compute(%arg : !llzk.felt) -> !llzk.struct<@Component> {
+      %self = new_struct : !llzk.struct<@Component>
+      %arr = readf %self[@arr] : !llzk.struct<@Component>, !llzk.array<3 x !llzk.felt>
+      %idx = arith.constant 1 : index
+      writearr %arr[%idx] = %arg : !llzk.array<3 x !llzk.felt>, !llzk.felt
+      %newarr = new_array %arg, %arg, %arg : !llzk.array<3 x !llzk.felt> // ends up being unused after removing the below ops, can also be removed
+      %elem = readarr %newarr[%idx] : !llzk.array<3 x !llzk.felt>, !llzk.felt // this is just %arg, redundant
+      writearr %arr[%idx] = %elem : !llzk.array<3 x !llzk.felt>, !llzk.felt // redundant write, this idx is already %arg
+      return %self : !llzk.struct<@Component>
+    }
+    func @constrain(%self: !llzk.struct<@Component>, %arg : !llzk.felt) { return }
+  }
+}
+
+// CHECK-LABEL: llzk.struct @Component {
+// CHECK-NEXT:    field @arr : !llzk.array<3 x !llzk.felt>
+// CHECK-NEXT:    func @compute(%[[VAL_0:.*]]: !llzk.felt) -> !llzk.struct<@Component> {
+// CHECK-NEXT:      %[[VAL_1:.*]] = new_struct : <@Component>
+// CHECK-NEXT:      %[[VAL_2:.*]] = readf %[[VAL_1]][@arr] : <@Component>, !llzk.array<3 x !llzk.felt>
+// CHECK-NEXT:      %[[VAL_3:.*]] = arith.constant 1 : index
+// CHECK-NEXT:      writearr %[[VAL_2]]{{\[}}%[[VAL_3]]] = %[[VAL_0]] : <3 x !llzk.felt>, !llzk.felt
+// CHECK-NEXT:      return %[[VAL_1]] : !llzk.struct<@Component>
+// CHECK-NEXT:    }
+// CHECK-NEXT:    func @constrain(%[[VAL_4:.*]]: !llzk.struct<@Component>, %[[VAL_5:.*]]: !llzk.felt) {
+// CHECK-NEXT:      return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
+// -----
+
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @Component {
+    field @matrix : !llzk.array<7,3 x !llzk.felt>
+
+    func @compute(%inputArr : !llzk.array<3 x !llzk.felt>) -> !llzk.struct<@Component> {
+      %self = new_struct : !llzk.struct<@Component>
+      %mat = readf %self[@matrix] : !llzk.struct<@Component>, !llzk.array<7,3 x !llzk.felt>
+      %idx1 = arith.constant 1 : index
+      %idx4 = arith.constant 4 : index
+      insertarr %mat[%idx1] = %inputArr : !llzk.array<7,3 x !llzk.felt>, !llzk.array<3 x !llzk.felt>
+      %arr1 = extractarr %mat[%idx1] : !llzk.array<7,3 x !llzk.felt> // redundant, replace with %inputArr
+      insertarr %mat[%idx4] = %arr1 : !llzk.array<7,3 x !llzk.felt>, !llzk.array<3 x !llzk.felt> // replace %arr1 with %inputArr
+      insertarr %mat[%idx1] = %arr1 : !llzk.array<7,3 x !llzk.felt>, !llzk.array<3 x !llzk.felt> // redundant
+      return %self : !llzk.struct<@Component>
+    }
+    func @constrain(%self: !llzk.struct<@Component>, %inputArr : !llzk.array<3 x !llzk.felt>) {
+      %mat = readf %self[@matrix] : !llzk.struct<@Component>, !llzk.array<7,3 x !llzk.felt>
+      %i = arith.constant 2 : index
+      %j = arith.constant 3 : index
+      %k = arith.constant 3 : index // redundant constant
+      %arr_i = extractarr %mat[%i] : !llzk.array<7,3 x !llzk.felt>
+      %arr_j = extractarr %mat[%j] : !llzk.array<7,3 x !llzk.felt>
+      %arr_k = extractarr %mat[%k] : !llzk.array<7,3 x !llzk.felt> // redundant extract
+      emit_eq %arr_i, %arr_j : !llzk.array<3 x !llzk.felt>
+      emit_eq %arr_j, %arr_k : !llzk.array<3 x !llzk.felt> // this constraint is redundant, but will not be removed in this pass
+      emit_eq %arr_k, %arr_i : !llzk.array<3 x !llzk.felt> // same with above
+      return
+    }
+  }
+}
+
+// CHECK-LABEL: llzk.struct @Component {
+// CHECK-NEXT:    field @matrix : !llzk.array<7,3 x !llzk.felt>
+// CHECK-NEXT:    func @compute(%[[VAL_0:.*]]: !llzk.array<3 x !llzk.felt>) -> !llzk.struct<@Component> {
+// CHECK-NEXT:      %[[VAL_1:.*]] = new_struct : <@Component>
+// CHECK-NEXT:      %[[VAL_2:.*]] = readf %[[VAL_1]][@matrix] : <@Component>, !llzk.array<7,3 x !llzk.felt>
+// CHECK-NEXT:      %[[VAL_3:.*]] = arith.constant 1 : index
+// CHECK-NEXT:      %[[VAL_4:.*]] = arith.constant 4 : index
+// CHECK-NEXT:      insertarr %[[VAL_2]]{{\[}}%[[VAL_3]]] = %[[VAL_0]] : <7,3 x !llzk.felt>, <3 x !llzk.felt>
+// CHECK-NEXT:      insertarr %[[VAL_2]]{{\[}}%[[VAL_4]]] = %[[VAL_0]] : <7,3 x !llzk.felt>, <3 x !llzk.felt>
+// CHECK-NEXT:      return %[[VAL_1]] : !llzk.struct<@Component>
+// CHECK-NEXT:    }
+// CHECK-NEXT:    func @constrain(%[[VAL_5:.*]]: !llzk.struct<@Component>, %[[VAL_6:.*]]: !llzk.array<3 x !llzk.felt>) {
+// CHECK-NEXT:      %[[VAL_7:.*]] = readf %[[VAL_5]][@matrix] : <@Component>, !llzk.array<7,3 x !llzk.felt>
+// CHECK-NEXT:      %[[VAL_8:.*]] = arith.constant 2 : index
+// CHECK-NEXT:      %[[VAL_9:.*]] = arith.constant 3 : index
+// CHECK-NEXT:      %[[VAL_10:.*]] = arith.constant 3 : index
+// CHECK-NEXT:      %[[VAL_11:.*]] = extractarr %[[VAL_7]]{{\[}}%[[VAL_8]]] : <7,3 x !llzk.felt>
+// CHECK-NEXT:      %[[VAL_12:.*]] = extractarr %[[VAL_7]]{{\[}}%[[VAL_9]]] : <7,3 x !llzk.felt>
+// CHECK-NEXT:      emit_eq %[[VAL_11]], %[[VAL_12]] : !llzk.array<3 x !llzk.felt>, !llzk.array<3 x !llzk.felt>
+// CHECK-NEXT:      emit_eq %[[VAL_12]], %[[VAL_12]] : !llzk.array<3 x !llzk.felt>, !llzk.array<3 x !llzk.felt>
+// CHECK-NEXT:      emit_eq %[[VAL_12]], %[[VAL_11]] : !llzk.array<3 x !llzk.felt>, !llzk.array<3 x !llzk.felt>
+// CHECK-NEXT:      return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
+// -----
+
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @Component {
+    field @arr : !llzk.array<3 x !llzk.felt>
+
+    func @compute(%arg : !llzk.felt, %inputIdx : index) -> !llzk.struct<@Component> {
+      %self = new_struct : !llzk.struct<@Component>
+      %arr = readf %self[@arr] : !llzk.struct<@Component>, !llzk.array<3 x !llzk.felt>
+      %idx = arith.constant 1 : index
+      %idx2 = arith.constant 2 : index
+      writearr %arr[%idx] = %arg : !llzk.array<3 x !llzk.felt>, !llzk.felt
+      writearr %arr[%inputIdx] = %arg : !llzk.array<3 x !llzk.felt>, !llzk.felt
+      // this read is necessary in the case that %inputIdx == %idx
+      %elem1 = readarr %arr[%idx] : !llzk.array<3 x !llzk.felt>, !llzk.felt
+      %elem2 = readarr %arr[%inputIdx] : !llzk.array<3 x !llzk.felt>, !llzk.felt
+      writearr %arr[%idx] = %elem2 : !llzk.array<3 x !llzk.felt>, !llzk.felt
+      writearr %arr[%idx2] = %elem1 : !llzk.array<3 x !llzk.felt>, !llzk.felt
+      return %self : !llzk.struct<@Component>
+    }
+    func @constrain(%self: !llzk.struct<@Component>, %arg : !llzk.felt, %inputIdx : index) { return }
+  }
+}
+
+// CHECK-LABEL: llzk.struct @Component {
+// CHECK-NEXT:    field @arr : !llzk.array<3 x !llzk.felt>
+// CHECK-NEXT:    func @compute(%[[VAL_0:.*]]: !llzk.felt, %[[VAL_1:.*]]: index) -> !llzk.struct<@Component> {
+// CHECK-NEXT:      %[[VAL_2:.*]] = new_struct : <@Component>
+// CHECK-NEXT:      %[[VAL_3:.*]] = readf %[[VAL_2]][@arr] : <@Component>, !llzk.array<3 x !llzk.felt>
+// CHECK-NEXT:      %[[VAL_4:.*]] = arith.constant 1 : index
+// CHECK-NEXT:      %[[VAL_5:.*]] = arith.constant 2 : index
+// CHECK-NEXT:      writearr %[[VAL_3]]{{\[}}%[[VAL_4]]] = %[[VAL_0]] : <3 x !llzk.felt>, !llzk.felt
+// CHECK-NEXT:      writearr %[[VAL_3]]{{\[}}%[[VAL_1]]] = %[[VAL_0]] : <3 x !llzk.felt>, !llzk.felt
+// CHECK-NEXT:      %[[VAL_6:.*]] = readarr %[[VAL_3]]{{\[}}%[[VAL_4]]] : <3 x !llzk.felt>, !llzk.felt
+// CHECK-NEXT:      writearr %[[VAL_3]]{{\[}}%[[VAL_4]]] = %[[VAL_0]] : <3 x !llzk.felt>, !llzk.felt
+// CHECK-NEXT:      writearr %[[VAL_3]]{{\[}}%[[VAL_5]]] = %[[VAL_6]] : <3 x !llzk.felt>, !llzk.felt
+// CHECK-NEXT:      return %[[VAL_2]] : !llzk.struct<@Component>
+// CHECK-NEXT:    }
+// CHECK-NEXT:    func @constrain(%[[VAL_7:.*]]: !llzk.struct<@Component>, %[[VAL_8:.*]]: !llzk.felt, %[[VAL_9:.*]]: index) {
+// CHECK-NEXT:      return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
+// -----
+
+module attributes {veridise.lang = "llzk"} {
+  // A modified version of IsZero that includes some redundancy
+  llzk.struct @IsZero {
+    llzk.field @bit : !llzk.felt
+    llzk.field @zero : !llzk.felt
+    llzk.field @one : !llzk.felt
+
+    func @compute(%a: !llzk.felt) -> !llzk.struct<@IsZero> {
+      %self = new_struct : !llzk.struct<@IsZero>
+      %z = llzk.constfelt 0
+      %o = llzk.constfelt 1
+      llzk.writef %self[@zero] = %z : !llzk.struct<@IsZero>, !llzk.felt
+      llzk.writef %self[@one] = %o : !llzk.struct<@IsZero>, !llzk.felt
+      %b = llzk.cmp eq(%a, %z)
+      %0 = scf.if %b -> !llzk.felt {
+        %z1 = llzk.readf %self[@zero] : !llzk.struct<@IsZero>, !llzk.felt
+        scf.yield %z1 : !llzk.felt
+      } else {
+        %o1 = llzk.readf %self[@one] : !llzk.struct<@IsZero>, !llzk.felt
+        scf.yield %o1 : !llzk.felt
+      }
+      llzk.writef %self[@bit] = %0 : !llzk.struct<@IsZero>, !llzk.felt
+      return %self : !llzk.struct<@IsZero>
+    }
+
+    func @constrain(%self : !llzk.struct<@IsZero>, %a: !llzk.felt) {
+      %0 = llzk.readf %self[@bit] : !llzk.struct<@IsZero>, !llzk.felt
+      %1 = llzk.constfelt 1
+      %2 = llzk.sub %0, %1
+      %3 = llzk.mul %0, %2
+      %4 = llzk.constfelt 0
+      llzk.emit_eq %3, %4 : !llzk.felt
+      %z1 = llzk.readf %self[@zero] : !llzk.struct<@IsZero>, !llzk.felt
+      %o1 = llzk.readf %self[@one] : !llzk.struct<@IsZero>, !llzk.felt
+      llzk.emit_eq %z1, %4 : !llzk.felt
+      llzk.emit_eq %o1, %1 : !llzk.felt
+      return
+    }
+  }
+}
+
+// CHECK-LABEL: llzk.struct @IsZero {
+// CHECK-NEXT:    field @bit : !llzk.felt
+// CHECK-NEXT:    field @zero : !llzk.felt
+// CHECK-NEXT:    field @one : !llzk.felt
+// CHECK-NEXT:    func @compute(%[[VAL_0:.*]]: !llzk.felt) -> !llzk.struct<@IsZero> {
+// CHECK-NEXT:      %[[VAL_1:.*]] = new_struct : <@IsZero>
+// CHECK-NEXT:      %[[VAL_2:.*]] = constfelt  0
+// CHECK-NEXT:      %[[VAL_3:.*]] = constfelt  1
+// CHECK-NEXT:      writef %[[VAL_1]][@zero] = %[[VAL_2]] : <@IsZero>, !llzk.felt
+// CHECK-NEXT:      writef %[[VAL_1]][@one] = %[[VAL_3]] : <@IsZero>, !llzk.felt
+// CHECK-NEXT:      %[[VAL_4:.*]] = cmp eq(%[[VAL_0]], %[[VAL_2]])
+// CHECK-NEXT:      %[[VAL_5:.*]] = scf.if %[[VAL_4]] -> (!llzk.felt) {
+// CHECK-NEXT:        scf.yield %[[VAL_2]] : !llzk.felt
+// CHECK-NEXT:      } else {
+// CHECK-NEXT:        scf.yield %[[VAL_3]] : !llzk.felt
+// CHECK-NEXT:      }
+// CHECK-NEXT:      writef %[[VAL_1]][@bit] = %[[VAL_5]] : <@IsZero>, !llzk.felt
+// CHECK-NEXT:      return %[[VAL_1]] : !llzk.struct<@IsZero>
+// CHECK-NEXT:    }
+// CHECK-NEXT:    func @constrain(%[[VAL_6:.*]]: !llzk.struct<@IsZero>, %[[VAL_7:.*]]: !llzk.felt) {
+// CHECK-NEXT:      %[[VAL_8:.*]] = readf %[[VAL_6]][@bit] : <@IsZero>, !llzk.felt
+// CHECK-NEXT:      %[[VAL_9:.*]] = constfelt  1
+// CHECK-NEXT:      %[[VAL_10:.*]] = sub %[[VAL_8]], %[[VAL_9]] : !llzk.felt, !llzk.felt
+// CHECK-NEXT:      %[[VAL_11:.*]] = mul %[[VAL_8]], %[[VAL_10]] : !llzk.felt, !llzk.felt
+// CHECK-NEXT:      %[[VAL_12:.*]] = constfelt  0
+// CHECK-NEXT:      emit_eq %[[VAL_11]], %[[VAL_12]] : !llzk.felt, !llzk.felt
+// CHECK-NEXT:      %[[VAL_13:.*]] = readf %[[VAL_6]][@zero] : <@IsZero>, !llzk.felt
+// CHECK-NEXT:      %[[VAL_14:.*]] = readf %[[VAL_6]][@one] : <@IsZero>, !llzk.felt
+// CHECK-NEXT:      emit_eq %[[VAL_13]], %[[VAL_12]] : !llzk.felt, !llzk.felt
+// CHECK-NEXT:      emit_eq %[[VAL_14]], %[[VAL_9]] : !llzk.felt, !llzk.felt
+// CHECK-NEXT:      return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
+// -----
+
+module attributes {veridise.lang = "llzk"} {
+  llzk.struct @Component {
+    field @matrix : !llzk.array<7,3 x !llzk.felt>
+
+    func @compute(%inputArr : !llzk.array<3 x !llzk.felt>, %cond : i1) -> !llzk.struct<@Component> {
+      %self = new_struct : !llzk.struct<@Component>
+      %mat = readf %self[@matrix] : !llzk.struct<@Component>, !llzk.array<7,3 x !llzk.felt>
+      %idx1 = arith.constant 1 : index
+      %idx4 = arith.constant 4 : index
+
+      scf.if %cond {
+        llzk.insertarr %mat[%idx1] = %inputArr : !llzk.array<7,3 x !llzk.felt>, !llzk.array<3 x !llzk.felt>
+      } else {
+        %arr1 = llzk.extractarr %mat[%idx1] : !llzk.array<7,3 x !llzk.felt> // This load is necessary, as the value is unknown in this branch
+        llzk.insertarr %mat[%idx4] = %arr1 : !llzk.array<7,3 x !llzk.felt>, !llzk.array<3 x !llzk.felt>
+        llzk.insertarr %mat[%idx1] = %arr1 : !llzk.array<7,3 x !llzk.felt>, !llzk.array<3 x !llzk.felt> // this store is still unnecessary
+      }
+
+      return %self : !llzk.struct<@Component>
+    }
+    func @constrain(%self: !llzk.struct<@Component>, %inputArr : !llzk.array<3 x !llzk.felt>, %cond : i1) {
+      return
+    }
+  }
+}
+
+// CHECK-LABEL: llzk.struct @Component {
+// CHECK-NEXT:    field @matrix : !llzk.array<7,3 x !llzk.felt>
+// CHECK-NEXT:    func @compute(%[[VAL_0:.*]]: !llzk.array<3 x !llzk.felt>, %[[VAL_1:.*]]: i1) -> !llzk.struct<@Component> {
+// CHECK-NEXT:      %[[VAL_2:.*]] = new_struct : <@Component>
+// CHECK-NEXT:      %[[VAL_3:.*]] = readf %[[VAL_2]][@matrix] : <@Component>, !llzk.array<7,3 x !llzk.felt>
+// CHECK-NEXT:      %[[VAL_4:.*]] = arith.constant 1 : index
+// CHECK-NEXT:      %[[VAL_5:.*]] = arith.constant 4 : index
+// CHECK-NEXT:      scf.if %[[VAL_1]] {
+// CHECK-NEXT:        llzk.insertarr %[[VAL_3]]{{\[}}%[[VAL_4]]] = %[[VAL_0]] : <7,3 x !llzk.felt>, <3 x !llzk.felt>
+// CHECK-NEXT:      } else {
+// CHECK-NEXT:        %[[VAL_6:.*]] = llzk.extractarr %[[VAL_3]]{{\[}}%[[VAL_4]]] : <7,3 x !llzk.felt>
+// CHECK-NEXT:        llzk.insertarr %[[VAL_3]]{{\[}}%[[VAL_5]]] = %[[VAL_6]] : <7,3 x !llzk.felt>, <3 x !llzk.felt>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      return %[[VAL_2]] : !llzk.struct<@Component>
+// CHECK-NEXT:    }
+// CHECK-NEXT:    func @constrain(%[[VAL_7:.*]]: !llzk.struct<@Component>, %[[VAL_8:.*]]: !llzk.array<3 x !llzk.felt>, %[[VAL_9:.*]]: i1) {
+// CHECK-NEXT:      return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
