@@ -8,10 +8,13 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
 #include <mlir/IR/DialectImplementation.h>
+#include <mlir/IR/SymbolTable.h>
 #include <mlir/Support/LogicalResult.h>
 
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
+
+#include <cassert>
 
 namespace llzk {
 
@@ -189,14 +192,35 @@ using ArrayDimensionTypes = TypeList<IntegerAttr, SymbolRefAttr, AffineMapAttr>;
 using StructParamTypes = TypeList<IntegerAttr, SymbolRefAttr, TypeAttr, AffineMapAttr>;
 
 class AllowedTypes {
-  bool no_felt, no_string, no_struct, no_array, no_var;
-  bool no_struct_params;
+  struct ColumnCheckData {
+    SymbolTableCollection *symbolTable = nullptr;
+    Operation *op = nullptr;
+  };
+
+  bool no_felt : 1 = false;
+  bool no_string : 1 = false;
+  bool no_struct : 1 = false;
+  bool no_array : 1 = false;
+  bool no_var : 1 = false;
+  bool no_int : 1 = false;
+  bool no_struct_params : 1 = false;
+  bool must_be_column : 1 = false;
+
+  ColumnCheckData columnCheck;
+
+  /// Validates that, if columns are a requirement, the struct type has columns.
+  /// If columns are not a requirement returns true early since the pointers required
+  /// for lookup may be null.
+  bool validColumns(StructType s) {
+    if (!must_be_column) {
+      return true;
+    }
+    assert(columnCheck.symbolTable);
+    assert(columnCheck.op);
+    return succeeded(s.hasColumns(*columnCheck.symbolTable, columnCheck.op));
+  }
 
 public:
-  constexpr AllowedTypes()
-      : no_felt(false), no_string(false), no_struct(false), no_array(false), no_var(false),
-        no_struct_params(false) {}
-
   constexpr AllowedTypes &noFelt() {
     no_felt = true;
     return *this;
@@ -222,12 +246,27 @@ public:
     return *this;
   }
 
+  constexpr AllowedTypes &noInt() {
+    no_int = true;
+    return *this;
+  }
+
   constexpr AllowedTypes &noStructParams(bool noStructParams = true) {
     no_struct_params = noStructParams;
     return *this;
   }
 
-  constexpr AllowedTypes &onlyInt() { return noFelt().noString().noStruct().noArray().noVar(); }
+  constexpr AllowedTypes &onlyInt() {
+    no_int = false;
+    return noFelt().noString().noStruct().noArray().noVar();
+  }
+
+  constexpr AllowedTypes &mustBeColumn(SymbolTableCollection &symbolTable, Operation *op) {
+    must_be_column = true;
+    columnCheck.symbolTable = &symbolTable;
+    columnCheck.op = op;
+    return *this;
+  }
 
   // This is the main check for allowed types.
   bool isValidTypeImpl(Type type);
@@ -298,46 +337,50 @@ public:
   // Note: The `no*` flags here refer to Types nested within a TypeAttr parameter (if any) except
   // for the `no_struct_params` flag which requires that `params` is null or empty.
   bool areValidStructTypeParams(ArrayAttr params, EmitErrorFn emitError = nullptr) {
+    if (isNullOrEmpty(params)) {
+      return true;
+    }
+    if (no_struct_params) {
+      return false;
+    }
     bool success = true;
-    if (!isNullOrEmpty(params)) {
-      if (no_struct_params) {
-        return false;
-      }
-      for (Attribute p : params) {
-        if (!StructParamTypes::matches(p)) {
-          StructParamTypes::reportInvalid(emitError, p, "Struct parameter");
-          success = false;
-        } else if (TypeAttr tyAttr = llvm::dyn_cast<TypeAttr>(p)) {
-          if (!isValidTypeImpl(tyAttr.getValue())) {
-            if (emitError) {
-              emitError()
-                  .append("expected a valid LLZK type but found ", tyAttr.getValue())
-                  .report();
-            }
-            success = false;
+    for (Attribute p : params) {
+      if (!StructParamTypes::matches(p)) {
+        StructParamTypes::reportInvalid(emitError, p, "Struct parameter");
+        success = false;
+      } else if (TypeAttr tyAttr = llvm::dyn_cast<TypeAttr>(p)) {
+        if (!isValidTypeImpl(tyAttr.getValue())) {
+          if (emitError) {
+            emitError().append("expected a valid LLZK type but found ", tyAttr.getValue()).report();
           }
-        } else if (no_var && !llvm::isa<IntegerAttr>(p)) {
-          TypeList<IntegerAttr>::reportInvalid(emitError, p, "Concrete struct parameter");
-          success = false;
-        } else if (failed(verifyIntAttrType(emitError, p))) {
           success = false;
         }
+      } else if (no_var && !llvm::isa<IntegerAttr>(p)) {
+        TypeList<IntegerAttr>::reportInvalid(emitError, p, "Concrete struct parameter");
+        success = false;
+      } else if (failed(verifyIntAttrType(emitError, p))) {
+        success = false;
       }
     }
+
     return success;
   }
 
   // Note: The `no*` flags here refer to Types nested within a TypeAttr parameter.
   bool isValidStructTypeImpl(Type type) {
     if (StructType sType = llvm::dyn_cast<StructType>(type)) {
-      return areValidStructTypeParams(sType.getParams());
+      return validColumns(sType) && areValidStructTypeParams(sType.getParams());
     }
     return false;
   }
 };
 
 bool AllowedTypes::isValidTypeImpl(Type type) {
-  return type.isSignlessInteger(1) || llvm::isa<IndexType>(type) ||
+  assert(
+      !(no_int && no_felt && no_string && no_var && no_struct && no_array) &&
+      "All types have been deactivated"
+  );
+  return (!no_int && type.isSignlessInteger(1)) || (!no_int && llvm::isa<IndexType>(type)) ||
          (!no_felt && llvm::isa<FeltType>(type)) || (!no_string && llvm::isa<StringType>(type)) ||
          (!no_var && llvm::isa<TypeVarType>(type)) || (!no_struct && isValidStructTypeImpl(type)) ||
          (!no_array && isValidArrayTypeImpl(type));
@@ -346,6 +389,10 @@ bool AllowedTypes::isValidTypeImpl(Type type) {
 } // namespace
 
 bool isValidType(Type type) { return AllowedTypes().isValidTypeImpl(type); }
+
+bool isValidColumnType(Type type, SymbolTableCollection &symbolTable, Operation *op) {
+  return AllowedTypes().noString().noInt().mustBeColumn(symbolTable, op).isValidTypeImpl(type);
+}
 
 bool isValidGlobalType(Type type) { return AllowedTypes().noVar().isValidTypeImpl(type); }
 
@@ -711,6 +758,14 @@ StructType::getDefinition(SymbolTableCollection &symbolTable, Operation *op) con
 
 LogicalResult StructType::verifySymbolRef(SymbolTableCollection &symbolTable, Operation *op) {
   return getDefinition(symbolTable, op);
+}
+
+LogicalResult StructType::hasColumns(SymbolTableCollection &symbolTable, Operation *op) const {
+  auto lookup = getDefinition(symbolTable, op);
+  if (mlir::failed(lookup)) {
+    return lookup;
+  }
+  return lookup->get().hasColumns();
 }
 
 //===------------------------------------------------------------------===//

@@ -4,6 +4,7 @@
 #include "llzk/Dialect/LLZK/Util/AttributeHelper.h"
 #include "llzk/Dialect/LLZK/Util/Debug.h"
 #include "llzk/Dialect/LLZK/Util/SymbolHelper.h"
+#include <llzk/Dialect/LLZK/IR/Attrs.h>
 
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Dialect/Affine/LoopUtils.h>
@@ -12,14 +13,23 @@
 #include <mlir/Dialect/SCF/Transforms/Patterns.h>
 #include <mlir/Dialect/SCF/Utils/Utils.h>
 #include <mlir/Dialect/Utils/StaticValueUtils.h>
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 #include <mlir/Pass/Pass.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
+#include <llvm/ADT/APInt.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DepthFirstIterator.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Debug.h>
 
 /// Include the generated base pass class definitions.
@@ -171,9 +181,9 @@ public:
 struct MatchFailureListener : public RewriterBase::Listener {
   bool hadFailure = false;
 
-  virtual ~MatchFailureListener() {}
+  ~MatchFailureListener() override {}
 
-  virtual LogicalResult
+  LogicalResult
   notifyMatchFailure(Location loc, function_ref<void(Diagnostic &)> reasonCallback) override {
     hadFailure = true;
 
@@ -229,6 +239,7 @@ public:
   LogicalResult matchAndRewrite(OpTy op, OpTy::Adaptor adaptor, ConversionPatternRewriter &rewriter)
       const override {
     const TypeConverter *converter = OpConversionPattern<OpTy>::getTypeConverter();
+    assert(converter);
     // Convert result types
     SmallVector<Type> newResultTypes;
     if (failed(converter->convertTypes(op->getResultTypes(), newResultTypes))) {
@@ -326,34 +337,52 @@ ConversionTarget newBaseTarget(MLIRContext *ctx) {
   return target;
 }
 
+static bool defaultLegalityCheck(const TypeConverter &tyConv, Operation *op) {
+  // Check operand types and result types
+  if (!tyConv.isLegal(op)) {
+    return false;
+  }
+  // Check type attributes
+  for (NamedAttribute n : op->getAttrDictionary().getValue()) {
+    if (TypeAttr tyAttr = llvm::dyn_cast<TypeAttr>(n.getValue())) {
+      Type t = tyAttr.getValue();
+      if (FunctionType funcTy = llvm::dyn_cast<FunctionType>(t)) {
+        if (!tyConv.isSignatureLegal(funcTy)) {
+          return false;
+        }
+      } else {
+        if (!tyConv.isLegal(t)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+// Default to true if the check is not for that particular operation type.
+template <typename Check> bool runCheck(Operation *op, Check check) {
+  if (auto specificOp =
+          mlir::dyn_cast_if_present<typename llvm::function_traits<Check>::template arg_t<0>>(op)) {
+    return check(specificOp);
+  }
+  return true;
+}
+
 /// Return a new `ConversionTarget` allowing all LLZK-required dialects and defining Op legality
 /// based on the given `TypeConverter` for Ops listed in both fields of `OpClassesWithStructTypes`
 /// and in `AdditionalOpTypes`.
-template <typename... AdditionalOpTypes>
-ConversionTarget newConverterDefinedTarget(TypeConverter &tyConv, MLIRContext *ctx) {
+/// Additional legality checks can be included for certain ops that will run along with the default
+/// check. For an op to be considered legal all checks (default plus additional checks if any) must
+/// return true.
+///
+template <typename... AdditionalOpTypes, typename... AdditionalChecks>
+ConversionTarget
+newConverterDefinedTarget(TypeConverter &tyConv, MLIRContext *ctx, AdditionalChecks &&...checks) {
   ConversionTarget target = newBaseTarget(ctx);
   auto inserter = [&](auto... opClasses) {
-    target.addDynamicallyLegalOp<decltype(opClasses)...>([&tyConv](Operation *op) {
-      // Check operand types and result types
-      if (!tyConv.isLegal(op)) {
-        return false;
-      }
-      // Check type attributes
-      for (NamedAttribute n : op->getAttrDictionary().getValue()) {
-        if (TypeAttr tyAttr = llvm::dyn_cast<TypeAttr>(n.getValue())) {
-          Type t = tyAttr.getValue();
-          if (FunctionType funcTy = llvm::dyn_cast<FunctionType>(t)) {
-            if (!tyConv.isSignatureLegal(funcTy)) {
-              return false;
-            }
-          } else {
-            if (!tyConv.isLegal(t)) {
-              return false;
-            }
-          }
-        }
-      }
-      return true;
+    target.addDynamicallyLegalOp<decltype(opClasses)...>([&tyConv, &checks...](Operation *op) {
+      return defaultLegalityCheck(tyConv, op) && (runCheck<AdditionalChecks>(op, checks) && ...);
     });
   };
   std::apply(inserter, OpClassesWithStructTypes.NoGeneralBuilder);
@@ -370,6 +399,10 @@ template <bool AllowStructParams = true> bool isConcreteAttr(Attribute a) {
 }
 
 namespace Step1_InstantiateStructs {
+
+static inline bool tableOffsetIsntSymbol(FieldReadOp op) {
+  return !mlir::isa_and_present<SymbolRefAttr>(op.getTableOffset().value_or(nullptr));
+}
 
 class StructCloner {
   ConversionTracker &tracker_;
@@ -461,9 +494,57 @@ class StructCloner {
     }
   };
 
-  class ClonedStructConstReadOpPattern : public OpConversionPattern<ConstReadOp> {
+  template <typename Impl, typename Op, typename... HandledAttrs>
+  class SymbolUserHelper : public OpConversionPattern<Op> {
+  private:
     const DenseMap<Attribute, Attribute> &paramNameToValue;
+
+    SymbolUserHelper(
+        TypeConverter &converter, MLIRContext *ctx, unsigned Benefit,
+        const DenseMap<Attribute, Attribute> &paramNameToInstantiatedValue
+    )
+        : OpConversionPattern<Op>(converter, ctx, Benefit),
+          paramNameToValue(paramNameToInstantiatedValue) {}
+
+  public:
+    using OpAdaptor = typename mlir::OpConversionPattern<Op>::OpAdaptor;
+
+    virtual Attribute getNameAttr(Op) const = 0;
+
+    virtual LogicalResult handleDefaultRewrite(
+        Attribute, Op op, OpAdaptor, ConversionPatternRewriter &, Attribute a
+    ) const {
+      return op->emitOpError().append("expected value with type ", op.getType(), " but found ", a);
+    }
+
+    LogicalResult
+    matchAndRewrite(Op op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+      auto res = this->paramNameToValue.find(getNameAttr(op));
+      if (res == this->paramNameToValue.end()) {
+        return op->emitOpError("missing instantiation");
+      }
+      llvm::TypeSwitch<Attribute, LogicalResult> TS(res->second);
+      llvm::TypeSwitch<Attribute, LogicalResult> *ptr = &TS;
+
+      ((ptr = &(ptr->template Case<HandledAttrs>([&](HandledAttrs a) {
+        return static_cast<const Impl *>(this)->handleRewrite(res->first, op, adaptor, rewriter, a);
+      }))),
+       ...);
+
+      return TS.Default([&](Attribute a) {
+        return handleDefaultRewrite(res->first, op, adaptor, rewriter, a);
+      });
+    }
+    friend Impl;
+  };
+
+  class ClonedStructConstReadOpPattern
+      : public SymbolUserHelper<
+            ClonedStructConstReadOpPattern, ConstReadOp, IntegerAttr, FeltConstAttr> {
     SmallVector<Diagnostic> &diagnostics;
+
+    using super =
+        SymbolUserHelper<ClonedStructConstReadOpPattern, ConstReadOp, IntegerAttr, FeltConstAttr>;
 
   public:
     ClonedStructConstReadOpPattern(
@@ -472,59 +553,97 @@ class StructCloner {
         SmallVector<Diagnostic> &instantiationDiagnostics
     )
         // future proof: use higher priority than GeneralTypeReplacePattern
-        : OpConversionPattern<ConstReadOp>(converter, ctx, 2),
-          paramNameToValue(paramNameToInstantiatedValue), diagnostics(instantiationDiagnostics) {}
+        : super(converter, ctx, /*Benefit=*/2, paramNameToInstantiatedValue),
+          diagnostics(instantiationDiagnostics) {}
 
-    LogicalResult matchAndRewrite(
-        ConstReadOp op, OpAdaptor adapter, ConversionPatternRewriter &rewriter
-    ) const override {
-      auto res = this->paramNameToValue.find(op.getConstNameAttr());
-      if (res == this->paramNameToValue.end()) {
-        return op->emitOpError("missing instantiation");
+    Attribute getNameAttr(ConstReadOp op) const override { return op.getConstNameAttr(); }
+
+    LogicalResult handleRewrite(
+        Attribute sym, ConstReadOp op, OpAdaptor, ConversionPatternRewriter &rewriter, IntegerAttr a
+    ) const {
+      APInt attrValue = a.getValue();
+      Type origResTy = op.getType();
+      if (llvm::isa<FeltType>(origResTy)) {
+        replaceOpWithNewOp<FeltConstantOp>(
+            rewriter, op, FeltConstAttr::get(getContext(), attrValue)
+        );
+        return success();
       }
-      return llvm::TypeSwitch<Attribute, LogicalResult>(res->second)
-          .Case<IntegerAttr>([&](IntegerAttr a) {
-        APInt attrValue = a.getValue();
-        Type origResTy = op.getType();
-        if (llvm::isa<FeltType>(origResTy)) {
-          replaceOpWithNewOp<FeltConstantOp>(
-              rewriter, op, FeltConstAttr::get(getContext(), attrValue)
-          );
-          return success();
-        } else if (llvm::isa<IndexType>(origResTy)) {
-          replaceOpWithNewOp<arith::ConstantIndexOp>(rewriter, op, fromAPInt(attrValue));
-          return success();
-        } else if (origResTy.isSignlessInteger(1)) {
-          // Treat 0 as false and any other value as true (but give a warning if it's not 1)
-          if (attrValue.isZero()) {
-            replaceOpWithNewOp<arith::ConstantIntOp>(rewriter, op, false, origResTy);
-            return success();
-          }
-          if (!attrValue.isOne()) {
-            Location opLoc = op.getLoc();
-            Diagnostic diag(opLoc, DiagnosticSeverity::Warning);
-            diag << "Interpretting non-zero value " << stringWithoutType(a) << " as true";
-            if (getContext()->shouldPrintOpOnDiagnostic()) {
-              diag.attachNote(opLoc) << "see current operation: " << *op;
-            }
-            diag.attachNote(UnknownLoc::get(getContext()))
-                << "when instantiating " << StructDefOp::getOperationName() << " parameter \""
-                << res->first << "\" for this call";
-            diagnostics.push_back(std::move(diag));
-          }
-          replaceOpWithNewOp<arith::ConstantIntOp>(rewriter, op, true, origResTy);
+
+      if (llvm::isa<IndexType>(origResTy)) {
+        replaceOpWithNewOp<arith::ConstantIndexOp>(rewriter, op, fromAPInt(attrValue));
+        return success();
+      }
+
+      if (origResTy.isSignlessInteger(1)) {
+        // Treat 0 as false and any other value as true (but give a warning if it's not 1)
+        if (attrValue.isZero()) {
+          replaceOpWithNewOp<arith::ConstantIntOp>(rewriter, op, false, origResTy);
           return success();
         }
-        return LogicalResult(op->emitOpError().append("unexpected result type ", origResTy));
-      })
-          .Case<FeltConstAttr>([&](FeltConstAttr a) {
-        replaceOpWithNewOp<FeltConstantOp>(rewriter, op, a);
+        if (!attrValue.isOne()) {
+          Location opLoc = op.getLoc();
+          Diagnostic diag(opLoc, DiagnosticSeverity::Warning);
+          diag << "Interpretting non-zero value " << stringWithoutType(a) << " as true";
+          if (getContext()->shouldPrintOpOnDiagnostic()) {
+            diag.attachNote(opLoc) << "see current operation: " << *op;
+          }
+          diag.attachNote(UnknownLoc::get(getContext()))
+              << "when instantiating " << StructDefOp::getOperationName() << " parameter \"" << sym
+              << "\" for this call";
+          diagnostics.push_back(std::move(diag));
+        }
+        replaceOpWithNewOp<arith::ConstantIntOp>(rewriter, op, true, origResTy);
         return success();
-      }).Default([&](Attribute a) {
-        return op->emitOpError().append(
-            "expected value with type ", op.getType(), " but found ", a
-        );
+      }
+      return LogicalResult(op->emitOpError().append("unexpected result type ", origResTy));
+    }
+
+    LogicalResult handleRewrite(
+        Attribute, ConstReadOp op, OpAdaptor, ConversionPatternRewriter &rewriter, FeltConstAttr a
+    ) const {
+      replaceOpWithNewOp<FeltConstantOp>(rewriter, op, a);
+      return success();
+    }
+  };
+
+  class ClonedStructFieldReadOpPattern
+      : public SymbolUserHelper<
+            ClonedStructFieldReadOpPattern, FieldReadOp, IntegerAttr, FeltConstAttr> {
+    using super =
+        SymbolUserHelper<ClonedStructFieldReadOpPattern, FieldReadOp, IntegerAttr, FeltConstAttr>;
+
+  public:
+    ClonedStructFieldReadOpPattern(
+        TypeConverter &converter, MLIRContext *ctx,
+        const DenseMap<Attribute, Attribute> &paramNameToInstantiatedValue
+    )
+        // future proof: use higher priority than GeneralTypeReplacePattern
+        : super(converter, ctx, /*Benefit=*/3, paramNameToInstantiatedValue) {}
+
+    Attribute getNameAttr(FieldReadOp op) const override {
+      return op.getTableOffset().value_or(nullptr);
+    }
+
+    template <typename Attr>
+    LogicalResult handleRewrite(
+        Attribute, FieldReadOp op, OpAdaptor, ConversionPatternRewriter &rewriter, Attr a
+    ) const {
+      rewriter.modifyOpInPlace(op, [&]() {
+        op.setTableOffsetAttr(rewriter.getIndexAttr(fromAPInt(a.getValue())));
       });
+
+      return success();
+    }
+
+    LogicalResult matchAndRewrite(
+        FieldReadOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter
+    ) const override {
+      if (tableOffsetIsntSymbol(op)) {
+        return failure();
+      }
+
+      return super::matchAndRewrite(op, adaptor, rewriter);
     }
   };
 
@@ -571,13 +690,17 @@ class StructCloner {
     DenseMap<Attribute, Attribute> nameToValueMap =
         buildNameToValueMap(typeAtDef.getParams(), typeAtCallerParams);
     MappedTypeConverter tyConv(typeAtDef, newRemoteType, nameToValueMap);
-    ConversionTarget target = newConverterDefinedTarget<EmitEqualityOp>(tyConv, ctx);
+    ConversionTarget target =
+        newConverterDefinedTarget<EmitEqualityOp>(tyConv, ctx, tableOffsetIsntSymbol);
+
     target.addIllegalOp<ConstReadOp>();
+
     RewritePatternSet patterns = newGeneralRewritePatternSet<EmitEqualityOp>(tyConv, ctx, target);
     patterns.add<ClonedStructCallOpPattern>(tyConv, ctx);
     patterns.add<ClonedStructConstReadOpPattern>(
         tyConv, ctx, nameToValueMap, tracker_.delayedDiagnosticSet(newRemoteType)
     );
+    patterns.add<ClonedStructFieldReadOpPattern>(tyConv, ctx, nameToValueMap);
     if (failed(applyFullConversion(newStruct, target, std::move(patterns)))) {
       return failure();
     }

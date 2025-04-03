@@ -4,13 +4,19 @@
 #include "llzk/Dialect/LLZK/Util/IncludeHelper.h"
 #include "llzk/Dialect/LLZK/Util/SymbolHelper.h"
 
+#include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/OwningOpRef.h>
+#include <mlir/IR/SymbolTable.h>
+#include <mlir/IR/ValueRange.h>
 #include <mlir/Support/LogicalResult.h>
 
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringSet.h>
 #include <llvm/ADT/Twine.h>
+
+#include <cstdint>
 
 // TableGen'd implementation files
 #define GET_OP_CLASSES
@@ -152,8 +158,9 @@ LogicalResult verifySizesForMultiAffineOps(
   // Ensure the `mapOpGroupSizes` and `operandSegmentSizes` attributes agree.
   // NOTE: the ODS generates verifyValueSizeAttr() which ensures 'mapOpGroupSizes' has no negative
   // elements and its sum is equal to the operand group size (which is similar to this check).
+  // If segmentSize < 0 the check is validated regardless of the difference.
   int32_t totalMapOpGroupSizes = std::reduce(mapOpGroupSizes.begin(), mapOpGroupSizes.end());
-  if (totalMapOpGroupSizes != segmentSize) {
+  if (totalMapOpGroupSizes != segmentSize && segmentSize >= 0) {
     // Since `mapOpGroupSizes` and `segmentSize` are computed this should never happen.
     return op->emitOpError().append(
         "number of operands for affine map instantiation (", totalMapOpGroupSizes,
@@ -805,28 +812,35 @@ LogicalResult ConstReadOp::verifySymbolUses(SymbolTableCollection &tables) {
 //===------------------------------------------------------------------===//
 
 void FieldDefOp::build(
-    OpBuilder &odsBuilder, OperationState &odsState, StringAttr sym_name, TypeAttr type
+    OpBuilder &odsBuilder, OperationState &odsState, StringAttr sym_name, TypeAttr type,
+    bool isColumn
 ) {
   Properties &props = odsState.getOrAddProperties<Properties>();
   props.setSymName(sym_name);
   props.setType(type);
+  if (isColumn) {
+    props.column = odsBuilder.getUnitAttr();
+  }
 }
 
 void FieldDefOp::build(
-    OpBuilder &odsBuilder, OperationState &odsState, StringRef sym_name, Type type
+    OpBuilder &odsBuilder, OperationState &odsState, StringRef sym_name, Type type, bool isColumn
 ) {
-  build(odsBuilder, odsState, odsBuilder.getStringAttr(sym_name), TypeAttr::get(type));
+  build(odsBuilder, odsState, odsBuilder.getStringAttr(sym_name), TypeAttr::get(type), isColumn);
 }
 
 void FieldDefOp::build(
-    OpBuilder &, OperationState &odsState, TypeRange resultTypes, ValueRange operands,
-    ArrayRef<NamedAttribute> attributes
+    OpBuilder &odsBuilder, OperationState &odsState, TypeRange resultTypes, ValueRange operands,
+    ArrayRef<NamedAttribute> attributes, bool isColumn
 ) {
   assert(operands.size() == 0u && "mismatched number of parameters");
   odsState.addOperands(operands);
   odsState.addAttributes(attributes);
   assert(resultTypes.size() == 0u && "mismatched number of return types");
   odsState.addTypes(resultTypes);
+  if (isColumn) {
+    odsState.getOrAddProperties<Properties>().column = odsBuilder.getUnitAttr();
+  }
 }
 void FieldDefOp::setPublicAttr(bool newValue) {
   if (newValue) {
@@ -836,27 +850,45 @@ void FieldDefOp::setPublicAttr(bool newValue) {
   }
 }
 
-LogicalResult FieldDefOp::verifySymbolUses(SymbolTableCollection &tables) {
-  Type fieldType = this->getType();
+static LogicalResult
+verifyFieldDefTypeImpl(Type fieldType, SymbolTableCollection &tables, Operation *origin) {
   if (StructType fieldStructType = llvm::dyn_cast<StructType>(fieldType)) {
     // Special case for StructType verifies that the field type can resolve and that it is NOT the
     // parent struct (i.e. struct fields cannot create circular references).
-    auto fieldTypeRes = verifyStructTypeResolution(tables, fieldStructType, *this);
+    auto fieldTypeRes = verifyStructTypeResolution(tables, fieldStructType, origin);
     if (failed(fieldTypeRes)) {
       return failure(); // above already emits a sufficient error message
     }
-    FailureOr<StructDefOp> parentRes = getParentOfType<StructDefOp>(*this);
+    FailureOr<StructDefOp> parentRes = getParentOfType<StructDefOp>(origin);
     assert(succeeded(parentRes) && "FieldDefOp parent is always StructDefOp"); // per ODS def
     if (fieldTypeRes.value() == parentRes.value()) {
-      return this->emitOpError()
+      return origin->emitOpError()
           .append("type is circular")
           .attachNote(parentRes.value().getLoc())
           .append("references parent component defined here");
     }
     return success();
   } else {
-    return verifyTypeResolution(tables, *this, fieldType);
+    return verifyTypeResolution(tables, origin, fieldType);
   }
+}
+
+LogicalResult FieldDefOp::verifySymbolUses(SymbolTableCollection &tables) {
+  Type fieldType = this->getType();
+  if (failed(verifyFieldDefTypeImpl(fieldType, tables, *this))) {
+    return failure();
+  }
+
+  if (!getColumn()) {
+    return success();
+  }
+  // If the field is marked as a column only a small subset of types are allowed.
+  if (!isValidColumnType(getType(), tables, *this)) {
+    return emitOpError() << "marked as column can only contain felts, arrays of column types, or "
+                            "structs with columns, but field has type "
+                         << getType();
+  }
+  return success();
 }
 
 //===------------------------------------------------------------------===//
@@ -883,26 +915,38 @@ getFieldDefOpImpl(FieldRefOpInterface refOp, SymbolTableCollection &tables, Stru
   return std::move(res.value());
 }
 
-LogicalResult verifySymbolUsesImpl(FieldRefOpInterface refOp, SymbolTableCollection &tables) {
+static FailureOr<SymbolLookupResult<FieldDefOp>>
+findField(FieldRefOpInterface refOp, SymbolTableCollection &tables) {
   // Ensure the base component/struct type reference can be resolved.
   StructType tyStruct = refOp.getStructType();
   if (failed(tyStruct.verifySymbolRef(tables, refOp.getOperation()))) {
     return failure();
   }
   // Ensure the field name can be resolved in that struct.
-  auto field = getFieldDefOpImpl(refOp, tables, tyStruct);
-  if (failed(field)) {
-    return field; // getFieldDefOp() already emits a sufficient error message
-  }
+  return getFieldDefOpImpl(refOp, tables, tyStruct);
+}
+
+static LogicalResult verifySymbolUsesImpl(
+    FieldRefOpInterface refOp, SymbolTableCollection &tables, SymbolLookupResult<FieldDefOp> &field
+) {
   // Ensure the type of the referenced field declaration matches the type used in this op.
   Type actualType = refOp.getVal().getType();
-  Type fieldType = field->get().getType();
-  if (!typesUnify(actualType, fieldType, field->getIncludeSymNames())) {
+  Type fieldType = field.get().getType();
+  if (!typesUnify(actualType, fieldType, field.getIncludeSymNames())) {
     return refOp->emitOpError() << "has wrong type; expected " << fieldType << ", got "
                                 << actualType;
   }
   // Ensure any SymbolRef used in the type are valid
   return verifyTypeResolution(tables, refOp.getOperation(), actualType);
+}
+
+LogicalResult verifySymbolUsesImpl(FieldRefOpInterface refOp, SymbolTableCollection &tables) {
+  // Ensure the field name can be resolved in that struct.
+  auto field = findField(refOp, tables);
+  if (failed(field)) {
+    return field; // getFieldDefOp() already emits a sufficient error message
+  }
+  return verifySymbolUsesImpl(refOp, tables, *field);
 }
 
 } // namespace
@@ -913,7 +957,21 @@ FieldRefOpInterface::getFieldDefOp(SymbolTableCollection &tables) {
 }
 
 LogicalResult FieldReadOp::verifySymbolUses(SymbolTableCollection &tables) {
-  return verifySymbolUsesImpl(*this, tables);
+  auto field = findField(*this, tables);
+  if (failed(field)) {
+    return failure();
+  }
+  if (failed(verifySymbolUsesImpl(*this, tables, *field))) {
+    return failure();
+  }
+  // If the field is not a column and an offset was specified then fail to validate
+  if (!field->get().getColumn() && getTableOffset().has_value()) {
+    return emitOpError("cannot read with table offset from a field that is not a column")
+        .attachNote(field->get().getLoc())
+        .append("field defined here");
+  }
+
+  return success();
 }
 
 LogicalResult FieldWriteOp::verifySymbolUses(SymbolTableCollection &tables) {
@@ -927,6 +985,53 @@ LogicalResult FieldWriteOp::verifySymbolUses(SymbolTableCollection &tables) {
   }
   // Perform the standard field ref checks.
   return verifySymbolUsesImpl(*this, tables);
+}
+
+//===------------------------------------------------------------------===//
+// FieldReadOp
+//===------------------------------------------------------------------===//
+
+void FieldReadOp::build(
+    OpBuilder &builder, OperationState &state, Type resultType, Value component, StringAttr field
+) {
+  Properties &props = state.getOrAddProperties<Properties>();
+  props.setFieldName(FlatSymbolRefAttr::get(field));
+  state.addTypes(resultType);
+  state.addOperands(component);
+  affineMapHelpers::buildInstantiationAttrsEmptyNoSegments<FieldReadOp>(builder, state);
+}
+
+void FieldReadOp::build(
+    OpBuilder &builder, OperationState &state, Type resultType, Value component, StringAttr field,
+    Attribute dist, ValueRange mapOperands, int32_t numDims
+) {
+  state.addOperands(component);
+  state.addTypes(resultType);
+  affineMapHelpers::buildInstantiationAttrsNoSegments<FieldReadOp>(
+      builder, state, ArrayRef({mapOperands}), builder.getDenseI32ArrayAttr({numDims})
+  );
+  Properties &props = state.getOrAddProperties<Properties>();
+  props.setFieldName(FlatSymbolRefAttr::get(field));
+}
+
+void FieldReadOp::build(
+    OpBuilder &builder, OperationState &state, TypeRange resultTypes, ValueRange operands,
+    ArrayRef<NamedAttribute> attrs
+) {
+  state.addTypes(resultTypes);
+  state.addOperands(operands);
+  state.addAttributes(attrs);
+}
+
+LogicalResult FieldReadOp::verify() {
+  mlir::SmallVector<AffineMapAttr, 1> mapAttrs;
+  if (AffineMapAttr map =
+          mlir::dyn_cast_if_present<AffineMapAttr>(getTableOffset().value_or(nullptr))) {
+    mapAttrs.push_back(map);
+  }
+  return affineMapHelpers::verifyAffineMapInstantiations(
+      getMapOperands(), getNumDimsPerMap(), mapAttrs, *this
+  );
 }
 
 //===------------------------------------------------------------------===//
