@@ -1,3 +1,18 @@
+//===-- llzk-opt.cpp - LLZK opt tool ----------------------------*- C++ -*-===//
+//
+// Part of the LLZK Project, under the Apache License v2.0.
+// See LICENSE.txt for license information.
+// Copyright 2025 Veridise Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements a version of the mlir-opt tool configured for use on
+/// LLZK files.
+///
+//===----------------------------------------------------------------------===//
+
 #include "llzk/Dialect/InitDialects.h"
 #include "llzk/Dialect/LLZK/Analysis/AnalysisPasses.h"
 #include "llzk/Dialect/LLZK/Transforms/LLZKTransformationPasses.h"
@@ -13,6 +28,8 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/Signals.h>
 
+#include "tools/config.h"
+
 static llvm::cl::list<std::string> IncludeDirs(
     "I", llvm::cl::desc("Directory of include files"), llvm::cl::value_desc("directory"),
     llvm::cl::Prefix
@@ -20,6 +37,9 @@ static llvm::cl::list<std::string> IncludeDirs(
 
 int main(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());
+  llvm::setBugReportMsg("PLEASE submit a bug report to " BUG_REPORT_URL
+                        " and include the crash backtrace, relevant LLZK files,"
+                        " and associated run script(s).\n");
 
   // MLIR initialization
   mlir::DialectRegistry registry;

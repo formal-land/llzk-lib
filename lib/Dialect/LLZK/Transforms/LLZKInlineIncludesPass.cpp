@@ -1,3 +1,17 @@
+//===-- LLZKInlineIncludesPass.cpp - -llzk-inline-includes pass -*- C++ -*-===//
+//
+// Part of the LLZK Project, under the Apache License v2.0.
+// See LICENSE.txt for license information.
+// Copyright 2025 Veridise Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements the `-llzk-inline-includes` pass.
+///
+//===----------------------------------------------------------------------===//
+
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/LLZK/Transforms/LLZKTransformationPasses.h"
 #include "llzk/Dialect/LLZK/Util/IncludeHelper.h"
@@ -5,7 +19,7 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Pass/Pass.h>
 
-/// Include the generated base pass class definitions.
+// Include the generated base pass class definitions.
 namespace llzk {
 #define GEN_PASS_DEF_INLINEINCLUDESPASS
 #include "llzk/Dialect/LLZK/Transforms/LLZKTransformationPasses.h.inc"

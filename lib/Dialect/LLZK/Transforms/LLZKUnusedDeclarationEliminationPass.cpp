@@ -1,3 +1,17 @@
+//===-- LLZKUnusedDeclarationEliminationPass.cpp ----------------*- C++ -*-===//
+//
+// Part of the LLZK Project, under the Apache License v2.0.
+// See LICENSE.txt for license information.
+// Copyright 2025 Veridise Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements the `-llzk-unused-declaration-elim` pass.
+///
+//===----------------------------------------------------------------------===//
+
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/LLZK/Transforms/LLZKTransformationPasses.h"
 #include "llzk/Dialect/LLZK/Util/SymbolHelper.h"
@@ -9,7 +23,7 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/Debug.h>
 
-/// Include the generated base pass class definitions.
+// Include the generated base pass class definitions.
 namespace llzk {
 // the *DECL* macro is required when a pass has options to declare the option struct
 #define GEN_PASS_DECL_UNUSEDDECLARATIONELIMINATIONPASS

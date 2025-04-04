@@ -2,8 +2,9 @@ cmake_minimum_required(VERSION 3.23)
 
 project(
   LLZK
+  # Keeping this description short since it's also used by doxygen
   DESCRIPTION
-    "Veridise's intermediate representation for zero knowledge languages"
+    "Veridise's ZK Language IR"
   VERSION 0.1.0
   HOMEPAGE_URL https://github.com/Veridise/llzk-lib)
 
@@ -45,7 +46,7 @@ function(add_header_library _name _include_dirs _export_name)
 endfunction()
 
 set(LLZK_EXPORT_TARGETS "LLZKTargets")
-# LLVM & MLIR do not propagate their include dirs correctly We define them as
+# LLVM & MLIR do not propagate their include dirs correctly. We define them as
 # INTERFACE libraries and link against them
 add_header_library(LLVMHeaders ${LLVM_INCLUDE_DIRS} ${LLZK_EXPORT_TARGETS})
 add_header_library(MLIRHeaders ${MLIR_INCLUDE_DIRS} ${LLZK_EXPORT_TARGETS})
@@ -180,11 +181,47 @@ add_custom_target(doc)
 find_package(Doxygen OPTIONAL_COMPONENTS dot)
 if(Doxygen_FOUND)
   message(STATUS "Doxygen found, enabling documentation...")
+
+  # Fetch style document
+  include(FetchContent)
+  set(DoxygenAwesomeCSS_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/deps/doxygen-awesome-css")
+  FetchContent_Declare(
+    DoxygenAwesomeCSS
+    GIT_REPOSITORY https://github.com/jothepro/doxygen-awesome-css.git
+    GIT_TAG v2.3.4
+    SOURCE_DIR "${DoxygenAwesomeCSS_SOURCE_DIR}"
+  )
+  FetchContent_MakeAvailable(DoxygenAwesomeCSS)
+
+  # - doxygen awesome settings
+  set(DOXYGEN_HTML_EXTRA_STYLESHEET
+    "${DoxygenAwesomeCSS_SOURCE_DIR}/doxygen-awesome.css"
+    "${DoxygenAwesomeCSS_SOURCE_DIR}/doxygen-awesome-sidebar-only.css"
+    "${DoxygenAwesomeCSS_SOURCE_DIR}/doxygen-awesome-sidebar-only-darkmode-toggle.css")
+  set(DOXYGEN_HTML_EXTRA_FILES
+    "${DoxygenAwesomeCSS_SOURCE_DIR}/doxygen-awesome-darkmode-toggle.js"
+    "${DoxygenAwesomeCSS_SOURCE_DIR}/doxygen-awesome-paragraph-link.js")
+  set(DOXYGEN_HTML_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/doc/header.html")
+  set(DOXYGEN_HTML_FOOTER "${CMAKE_CURRENT_SOURCE_DIR}/doc/footer.html")
+  set(DOXYGEN_GENERATE_TREEVIEW YES)
+  set(DOXYGEN_DISABLE_INDEX NO)
+  set(DOXYGEN_FULL_SIDEBAR NO)
+  set(DOXYGEN_HTML_COLORSTYLE "LIGHT")
+  set(DOXYGEN_DOT_IMAGE_FORMAT "svg")
+  set(DOXYGEN_DOT_TRANSPARENT YES)
+  set(DOXYGEN_TREEVIEW_WIDTH 700)
+  # set(DOXYGEN_INTERACTIVE_SVG YES) # This is an option, but it's kinda clunky
+
+  # Remaining doxygen setup
   set(DOXYGEN_EXTRACT_ALL YES)
   set(DOXYGEN_INCLUDE_PATH "${CMAKE_CURRENT_BINARY_DIR}/include/")
-  set(DOXYGEN_EXCLUDE_PATTERNS ${CMAKE_CURRENT_BINARY_DIR}/include/*/*.md)
+  set(DOXYGEN_EXCLUDE_PATTERNS
+    "${CMAKE_CURRENT_BINARY_DIR}/include/*/*.md"
+    # We ignore the passes because we aggregate the documentation in doc/tools.md under `llzk-opt`
+    "${LLZK_MLIR_DOC_OUTPUT_DIR}/passes/*.md"
+  )
   set(DOXYGEN_USE_MDFILE_AS_MAINPAGE
-      ${CMAKE_CURRENT_SOURCE_DIR}/doc/doxygen/index.md)
+      ${CMAKE_CURRENT_SOURCE_DIR}/doc/index.md)
   set(DOXYGEN_FILE_PATTERNS
       *.cpp
       *.cpp.inc
@@ -193,21 +230,24 @@ if(Doxygen_FOUND)
       *.h
       *.td
       *.md
-      *.py)
+      *.py
+      *.txt)
   set(DOXYGEN_EXTENSION_MAPPING inc=C++)
   set(DOXYGEN_MACRO_EXPANSION YES)
   set(DOXYGEN_EXPAND_ONLY_PREDEF YES)
   set(DOXYGEN_PREDEFINED GET_OP_CLASSES GET_TYPEDEF_CLASSES GET_ATTR_CLASSES)
   set(DOXYGEN_SOURCE_BROWSER YES)
   set(DOXYGEN_JAVADOC_AUTOBRIEF YES)
+  # The order that docs are added affects the sorting in the navigation bar.
   doxygen_add_docs(
     doxygen
+    "${CMAKE_CURRENT_SOURCE_DIR}/doc/"
     "${CMAKE_CURRENT_SOURCE_DIR}/lib/"
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/"
     "${CMAKE_CURRENT_BINARY_DIR}/include/"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/"
     "${LLZK_MLIR_DOC_OUTPUT_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/doc/doxygen/")
+    "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.txt")
   add_dependencies(doxygen LLZKDialectHeaders mlir-doc)
   add_dependencies(doc doxygen)
 endif()
