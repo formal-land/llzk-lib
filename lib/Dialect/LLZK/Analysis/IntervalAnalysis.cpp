@@ -8,6 +8,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "llzk/Dialect/LLZK/Analysis/IntervalAnalysis.h"
+#include "llzk/Dialect/LLZK/Util/APIntHelper.h"
+#include "llzk/Dialect/LLZK/Util/Debug.h"
+
+#include <llvm/ADT/TypeSwitch.h>
+
+using namespace mlir;
 
 namespace llzk {
 
@@ -44,12 +50,12 @@ void Field::initKnownFields(llvm::DenseMap<llvm::StringRef, Field> &knownFields)
 }
 
 llvm::APSInt Field::reduce(llvm::APSInt i) const {
-  auto maxBits = std::max(i.getBitWidth(), bitWidth());
-  auto m = (i.zext(maxBits).urem(prime().zext(maxBits))).trunc(bitWidth());
+  unsigned maxBits = std::max(i.getBitWidth(), bitWidth());
+  llvm::APSInt m = (i.extend(maxBits) % prime().extend(maxBits)).trunc(bitWidth());
   if (m.isNegative()) {
-    return prime() + llvm::APSInt(m);
+    return prime() + m;
   }
-  return llvm::APSInt(m);
+  return m;
 }
 
 llvm::APSInt Field::reduce(unsigned i) const {
@@ -60,15 +66,15 @@ llvm::APSInt Field::reduce(unsigned i) const {
 /* UnreducedInterval */
 
 Interval UnreducedInterval::reduce(const Field &field) const {
-  if (a > b) {
+  if (safeGt(a, b)) {
     return Interval::Empty(field);
   }
-  if (width().trunc(field.bitWidth()) >= field.prime()) {
+  if (safeGe(width(), field.prime())) {
     return Interval::Entire(field);
   }
-
   auto lhs = field.reduce(a), rhs = field.reduce(b);
-
+  // lhs and rhs are now guaranteed to have the same bitwidth, so we can use
+  // built-in functions.
   if ((rhs - lhs).isZero()) {
     return Interval::Degenerate(field, lhs);
   }
@@ -93,38 +99,51 @@ Interval UnreducedInterval::reduce(const Field &field) const {
 
 UnreducedInterval UnreducedInterval::intersect(const UnreducedInterval &rhs) const {
   auto &lhs = *this;
-  return UnreducedInterval(std::max(lhs.a, rhs.a), std::min(lhs.b, rhs.b));
+  return UnreducedInterval(safeMax(lhs.a, rhs.a), safeMin(lhs.b, rhs.b));
 }
 
 UnreducedInterval UnreducedInterval::doUnion(const UnreducedInterval &rhs) const {
   auto &lhs = *this;
-  return UnreducedInterval(std::min(lhs.a, rhs.a), std::max(lhs.b, rhs.b));
+  return UnreducedInterval(safeMin(lhs.a, rhs.a), safeMax(lhs.b, rhs.b));
 }
 
-UnreducedInterval UnreducedInterval::lt(const UnreducedInterval &rhs) const {
+UnreducedInterval UnreducedInterval::computeLTPart(const UnreducedInterval &rhs) const {
+  if (isEmpty() || rhs.isEmpty()) {
+    return *this;
+  }
   auto one = llvm::APSInt(llvm::APInt(a.getBitWidth(), 1));
-  auto bound = rhs.b - one;
-  return UnreducedInterval(std::min(a, bound), std::min(b, bound));
+  auto bound = expandingSub(rhs.b, one);
+  return UnreducedInterval(a, safeMin(b, bound));
 }
 
-UnreducedInterval UnreducedInterval::le(const UnreducedInterval &rhs) const {
-  return UnreducedInterval(std::min(a, rhs.b), std::min(b, rhs.b));
+UnreducedInterval UnreducedInterval::computeLEPart(const UnreducedInterval &rhs) const {
+  if (isEmpty() || rhs.isEmpty()) {
+    return *this;
+  }
+  return UnreducedInterval(a, safeMin(b, rhs.b));
 }
 
-UnreducedInterval UnreducedInterval::gt(const UnreducedInterval &rhs) const {
+UnreducedInterval UnreducedInterval::computeGTPart(const UnreducedInterval &rhs) const {
+  if (isEmpty() || rhs.isEmpty()) {
+    return *this;
+  }
   auto one = llvm::APSInt(llvm::APInt(a.getBitWidth(), 1));
-  auto bound = rhs.a + one;
-  return UnreducedInterval(std::max(a, bound), std::max(b, bound));
+  auto bound = expandingAdd(rhs.a, one);
+  return UnreducedInterval(safeMax(a, bound), b);
 }
 
-UnreducedInterval UnreducedInterval::ge(const UnreducedInterval &rhs) const {
-  return UnreducedInterval(std::max(a, rhs.a), std::max(b, rhs.a));
+UnreducedInterval UnreducedInterval::computeGEPart(const UnreducedInterval &rhs) const {
+  if (isEmpty() || rhs.isEmpty()) {
+    return *this;
+  }
+  return UnreducedInterval(safeMax(a, rhs.a), b);
 }
 
 UnreducedInterval UnreducedInterval::operator-() const { return UnreducedInterval(-b, -a); }
 
 UnreducedInterval operator+(const UnreducedInterval &lhs, const UnreducedInterval &rhs) {
-  return UnreducedInterval(lhs.a + rhs.a, lhs.b + rhs.b);
+  llvm::APSInt low = expandingAdd(lhs.a, rhs.a), high = expandingAdd(lhs.b, rhs.b);
+  return UnreducedInterval(low, high);
 }
 
 UnreducedInterval operator-(const UnreducedInterval &lhs, const UnreducedInterval &rhs) {
@@ -132,31 +151,45 @@ UnreducedInterval operator-(const UnreducedInterval &lhs, const UnreducedInterva
 }
 
 UnreducedInterval operator*(const UnreducedInterval &lhs, const UnreducedInterval &rhs) {
-  auto v1 = lhs.a * rhs.a;
-  auto v2 = lhs.a * rhs.b;
-  auto v3 = lhs.b * rhs.a;
-  auto v4 = lhs.b * rhs.b;
+  auto v1 = expandingMul(lhs.a, rhs.a);
+  auto v2 = expandingMul(lhs.a, rhs.b);
+  auto v3 = expandingMul(lhs.b, rhs.a);
+  auto v4 = expandingMul(lhs.b, rhs.b);
 
-  auto minVal = std::min({v1, v2, v3, v4});
-  auto maxVal = std::max({v1, v2, v3, v4});
+  auto minVal = safeMin({v1, v2, v3, v4});
+  auto maxVal = safeMax({v1, v2, v3, v4});
 
   return UnreducedInterval(minVal, maxVal);
 }
 
 bool UnreducedInterval::overlaps(const UnreducedInterval &rhs) const {
-  auto &lhs = *this;
-  return lhs.b >= rhs.a || lhs.a <= rhs.b;
+  return isNotEmpty() && rhs.isNotEmpty() && safeGe(b, rhs.a) && safeLe(a, rhs.b);
 }
 
 std::strong_ordering operator<=>(const UnreducedInterval &lhs, const UnreducedInterval &rhs) {
-  if (lhs.a < rhs.a || (lhs.a == rhs.a && lhs.b < rhs.b)) {
+  if (safeLt(lhs.a, rhs.a) || (safeEq(lhs.a, rhs.a) && safeLt(lhs.b, rhs.b))) {
     return std::strong_ordering::less;
   }
-  if (lhs.a > rhs.a || (lhs.a == rhs.a && lhs.b > rhs.b)) {
+  if (safeGt(lhs.a, rhs.a) || (safeEq(lhs.a, rhs.a) && safeGt(lhs.b, rhs.b))) {
     return std::strong_ordering::greater;
   }
   return std::strong_ordering::equal;
 }
+
+llvm::APSInt UnreducedInterval::width() const {
+  llvm::APSInt w;
+  if (safeGt(a, b)) {
+    // This would be reduced to an empty Interval, so the width is just zero.
+    w = llvm::APSInt::getUnsigned(0);
+  } else {
+    /// Since the range is inclusive, we add one to the difference to get the true width.
+    w = expandingSub(b, a)++;
+  }
+  ensure(safeGe(w, llvm::APSInt::getUnsigned(0)), "cannot have negative width");
+  return w;
+}
+
+bool UnreducedInterval::isEmpty() const { return safeEq(width(), llvm::APSInt::getUnsigned(0)); }
 
 /* Interval */
 
@@ -171,23 +204,27 @@ UnreducedInterval Interval::toUnreduced() const {
 }
 
 UnreducedInterval Interval::firstUnreduced() const {
-  if (isOneOf<Type::TypeF>()) {
+  if (is<Type::TypeF>()) {
     return UnreducedInterval(field.get().prime() - a, b);
   }
   return toUnreduced();
 }
 
 UnreducedInterval Interval::secondUnreduced() const {
-  ensure(isOneOf<Type::TypeA, Type::TypeB, Type::TypeC>(), "unsupported range type");
+  ensure(is<Type::TypeA, Type::TypeB, Type::TypeC>(), "unsupported range type");
   return UnreducedInterval(a - field.get().prime(), b - field.get().prime());
 }
 
 Interval Interval::join(const Interval &rhs) const {
   auto &lhs = *this;
+  ensure(
+      lhs.getField() == rhs.getField(), "interval operations across differing fields is unsupported"
+  );
+  const Field &f = lhs.getField();
 
   // Trivial cases
   if (lhs.isEntire() || rhs.isEntire()) {
-    return Interval::Entire(field.get());
+    return Interval::Entire(f);
   }
   if (lhs.isEmpty()) {
     return rhs;
@@ -196,32 +233,32 @@ Interval Interval::join(const Interval &rhs) const {
     return lhs;
   }
   if (lhs.isDegenerate() || rhs.isDegenerate()) {
-    return lhs.toUnreduced().doUnion(rhs.toUnreduced()).reduce(field.get());
+    return lhs.toUnreduced().doUnion(rhs.toUnreduced()).reduce(f);
   }
 
   // More complex cases
   if (areOneOf<
           {Type::TypeA, Type::TypeA}, {Type::TypeB, Type::TypeB}, {Type::TypeC, Type::TypeC},
           {Type::TypeA, Type::TypeC}, {Type::TypeB, Type::TypeC}>(lhs, rhs)) {
-    return Interval(rhs.ty, field.get(), std::min(lhs.a, rhs.a), std::max(lhs.b, rhs.b));
+    return Interval(rhs.ty, f, std::min(lhs.a, rhs.a), std::max(lhs.b, rhs.b));
   }
   if (areOneOf<{Type::TypeA, Type::TypeB}>(lhs, rhs)) {
     auto lhsUnred = lhs.firstUnreduced();
     auto opt1 = rhs.firstUnreduced().doUnion(lhsUnred);
     auto opt2 = rhs.secondUnreduced().doUnion(lhsUnred);
     if (opt1.width() <= opt2.width()) {
-      return opt1.reduce(field.get());
+      return opt1.reduce(f);
     }
-    return opt2.reduce(field.get());
+    return opt2.reduce(f);
   }
   if (areOneOf<{Type::TypeF, Type::TypeF}, {Type::TypeA, Type::TypeF}>(lhs, rhs)) {
-    return lhs.firstUnreduced().doUnion(rhs.firstUnreduced()).reduce(field.get());
+    return lhs.firstUnreduced().doUnion(rhs.firstUnreduced()).reduce(f);
   }
   if (areOneOf<{Type::TypeB, Type::TypeF}>(lhs, rhs)) {
-    return lhs.secondUnreduced().doUnion(rhs.firstUnreduced()).reduce(field.get());
+    return lhs.secondUnreduced().doUnion(rhs.firstUnreduced()).reduce(f);
   }
   if (areOneOf<{Type::TypeC, Type::TypeF}>(lhs, rhs)) {
-    return Interval::Entire(field.get());
+    return Interval::Entire(f);
   }
   if (areOneOf<
           {Type::TypeB, Type::TypeA}, {Type::TypeC, Type::TypeA}, {Type::TypeC, Type::TypeB},
@@ -231,11 +268,14 @@ Interval Interval::join(const Interval &rhs) const {
     return rhs.join(lhs);
   }
   llvm::report_fatal_error("unhandled join case");
-  return Interval::Entire(field.get());
+  return Interval::Entire(f);
 }
 
 Interval Interval::intersect(const Interval &rhs) const {
   auto &lhs = *this;
+  ensure(
+      lhs.getField() == rhs.getField(), "interval operations across differing fields is unsupported"
+  );
 
   // Trivial cases
   if (lhs.isEmpty() || rhs.isEmpty()) {
@@ -295,6 +335,69 @@ Interval Interval::intersect(const Interval &rhs) const {
   return Interval::Empty(field.get());
 }
 
+Interval Interval::difference(const Interval &other) const {
+  // intersect checks that we're in the same field
+  Interval intersection = intersect(other);
+  if (intersection.isEmpty()) {
+    // There's nothing to remove, so just return this
+    return *this;
+  }
+
+  const Field &f = field.get();
+
+  // Trivial cases with a non-empty intersection
+  if (isDegenerate() || other.isEntire()) {
+    return Interval::Empty(f);
+  }
+  if (isEntire()) {
+    // Since we don't support punching arbitrary holes in ranges, we only reduce
+    // entire ranges if other is [0, b] or [a, prime - 1]
+    if (other.a == f.zero()) {
+      return UnreducedInterval(other.b + f.one(), f.maxVal()).reduce(f);
+    }
+    if (other.b == f.maxVal()) {
+      return UnreducedInterval(f.zero(), other.a - f.one()).reduce(f);
+    }
+
+    return *this;
+  }
+
+  // Non-trivial cases
+  // - Internal+internal or external+external cases
+  if ((is<Type::TypeA, Type::TypeB, Type::TypeC>() &&
+       intersection.is<Type::TypeA, Type::TypeB, Type::TypeC>()) ||
+      areOneOf<{Type::TypeF, Type::TypeF}>(*this, intersection)) {
+    // The intersection needs to be at the end of the interval, otherwise we would
+    // split the interval in two, and we aren't set up to support multiple intervals
+    // per value.
+    if (a != intersection.a && b != intersection.b) {
+      return *this;
+    }
+    // Otherwise, remove the intersection and reduce
+    if (a == intersection.a) {
+      return UnreducedInterval(intersection.b + f.one(), b).reduce(f);
+    }
+    // else b == intersection.b
+    return UnreducedInterval(a, intersection.a - f.one()).reduce(f);
+  }
+  // - Mixed internal/external cases. We flip the comparison
+  if (isTypeF()) {
+    if (a != intersection.b && b != intersection.a) {
+      return *this;
+    }
+    // Otherwise, remove the intersection and reduce
+    if (a == intersection.b) {
+      return UnreducedInterval(intersection.a + f.one(), b).reduce(f);
+    }
+    // else b == intersection.a
+    return UnreducedInterval(a, intersection.b - f.one()).reduce(f);
+  }
+
+  // In cases we don't know how to handle, we over-approximate and return
+  // the original interval.
+  return *this;
+}
+
 Interval Interval::operator-() const { return (-firstUnreduced()).reduce(field.get()); }
 
 Interval operator+(const Interval &lhs, const Interval &rhs) {
@@ -324,29 +427,31 @@ Interval operator*(const Interval &lhs, const Interval &rhs) {
   return (lhs.firstUnreduced() * rhs.firstUnreduced()).reduce(field);
 }
 
-Interval operator/(const Interval &lhs, const Interval &rhs) {
+FailureOr<Interval> operator/(const Interval &lhs, const Interval &rhs) {
+  ensure(lhs.getField() == rhs.getField(), "cannot divide intervals in different fields");
   const auto &field = rhs.getField();
   if (rhs.width() > field.one()) {
     return Interval::Entire(field);
   }
   if (rhs.a.isZero()) {
-    llvm::report_fatal_error(
-        "LLZK error in " + mlir::Twine(__PRETTY_FUNCTION__) + ": division by zero"
-    );
+    return failure();
   }
-  return UnreducedInterval(lhs.a / rhs.a, lhs.b / rhs.a).reduce(field);
+  return success(UnreducedInterval(lhs.a / rhs.a, lhs.b / rhs.a).reduce(field));
 }
 
 Interval operator%(const Interval &lhs, const Interval &rhs) {
+  ensure(
+      lhs.getField() == rhs.getField(), "interval operations across differing fields is unsupported"
+  );
   const auto &field = rhs.getField();
   return UnreducedInterval(field.zero(), rhs.b).reduce(field);
 }
 
 void Interval::print(mlir::raw_ostream &os) const {
   os << TypeName(ty);
-  if (isOneOf<Type::Degenerate>()) {
+  if (is<Type::Degenerate>()) {
     os << '(' << a << ')';
-  } else if (!isOneOf<Type::Entire, Type::Empty>()) {
+  } else if (!is<Type::Entire, Type::Empty>()) {
     os << ":[ " << a << ", " << b << " ]";
   }
 }
@@ -395,9 +500,19 @@ mul(llvm::SMTSolverRef solver, const ExpressionValue &lhs, const ExpressionValue
 }
 
 ExpressionValue
-div(llvm::SMTSolverRef solver, const ExpressionValue &lhs, const ExpressionValue &rhs) {
+div(llvm::SMTSolverRef solver, DivFeltOp op, const ExpressionValue &lhs,
+    const ExpressionValue &rhs) {
   ExpressionValue res;
-  res.i = lhs.i / rhs.i;
+  auto divRes = lhs.i / rhs.i;
+  if (failed(divRes)) {
+    op->emitWarning(
+        "divisor is not restricted to non-zero values, leading to potential divide-by-zero error."
+        " Range of division result will be treated as unbounded."
+    );
+    res.i = Interval::Entire(lhs.getField());
+  } else {
+    res.i = *divRes;
+  }
   res.expr = solver->mkBVUDiv(lhs.expr, rhs.expr);
   return res;
 }
@@ -444,21 +559,20 @@ ExpressionValue fallbackBinaryOp(
 ) {
   ExpressionValue res;
   res.i = Interval::Entire(lhs.getField());
-  if (mlir::isa<AndFeltOp>(op)) {
-    res.expr = solver->mkBVAnd(lhs.expr, rhs.expr);
-  } else if (mlir::isa<OrFeltOp>(op)) {
-    res.expr = solver->mkBVOr(lhs.expr, rhs.expr);
-  } else if (mlir::isa<XorFeltOp>(op)) {
-    res.expr = solver->mkBVXor(lhs.expr, lhs.expr);
-  } else if (mlir::isa<ShlFeltOp>(op)) {
-    res.expr = solver->mkBVShl(lhs.expr, rhs.expr);
-  } else if (mlir::isa<ShrFeltOp>(op)) {
-    res.expr = solver->mkBVLshr(lhs.expr, rhs.expr);
-  } else {
+  res.expr = TypeSwitch<Operation *, llvm::SMTExprRef>(op)
+                 .Case<AndFeltOp>([&](AndFeltOp _) { return solver->mkBVAnd(lhs.expr, rhs.expr); })
+                 .Case<OrFeltOp>([&](OrFeltOp _) { return solver->mkBVOr(lhs.expr, rhs.expr); })
+                 .Case<XorFeltOp>([&](XorFeltOp _) { return solver->mkBVXor(lhs.expr, rhs.expr); })
+                 .Case<ShlFeltOp>([&](ShlFeltOp _) { return solver->mkBVShl(lhs.expr, rhs.expr); })
+                 .Case<ShrFeltOp>([&](ShrFeltOp _) {
+    return solver->mkBVLshr(lhs.expr, rhs.expr);
+  }).Default([&](Operation *unsupported) {
     llvm::report_fatal_error(
-        "no fallback provided for " + mlir::Twine(op->getName().getStringRef())
+        "no fallback provided for " + mlir::Twine(unsupported->getName().getStringRef())
     );
-  }
+    return nullptr;
+  });
+
   return res;
 }
 
@@ -481,6 +595,38 @@ ExpressionValue notOp(llvm::SMTSolverRef solver, const ExpressionValue &val) {
   }
   res.i = Interval::Boolean(f);
   res.expr = solver->mkBVNot(val.expr);
+  return res;
+}
+
+ExpressionValue
+fallbackUnaryOp(llvm::SMTSolverRef solver, mlir::Operation *op, const ExpressionValue &val) {
+  const Field &field = val.getField();
+  ExpressionValue res;
+  res.i = Interval::Entire(field);
+  res.expr = TypeSwitch<Operation *, llvm::SMTExprRef>(op)
+                 .Case<InvFeltOp>([&](InvFeltOp _) {
+    // The definition of an inverse X^-1 is Y s.t. XY % prime = 1.
+    // To create this expression, we create a new symbol for Y and add the
+    // XY % prime = 1 constraint to the solver.
+    std::string symName;
+    llvm::raw_string_ostream ss(symName);
+    ss << *op;
+
+    llvm::SMTExprRef invSym = field.createSymbol(solver, symName.c_str());
+    llvm::SMTExprRef one = solver->mkBitvector(field.one(), field.bitWidth());
+    llvm::SMTExprRef prime = solver->mkBitvector(field.prime(), field.bitWidth());
+    llvm::SMTExprRef mult = solver->mkBVMul(val.getExpr(), invSym);
+    llvm::SMTExprRef mod = solver->mkBVURem(mult, prime);
+    llvm::SMTExprRef constraint = solver->mkEqual(mod, one);
+    solver->addConstraint(constraint);
+    return invSym;
+  }).Default([&](Operation *unsupported) {
+    llvm::report_fatal_error(
+        "no fallback provided for " + mlir::Twine(op->getName().getStringRef())
+    );
+    return nullptr;
+  });
+
   return res;
 }
 
@@ -578,6 +724,53 @@ mlir::FailureOr<Interval> IntervalAnalysisLattice::findInterval(llvm::SMTExprRef
 
 /* IntervalDataFlowAnalysis */
 
+/// @brief The interval analysis is intraprocedural only for now, so this control
+/// flow transfer function passes no data to the callee and sets the post-call
+/// state to that of the pre-call state (i.e., calls are ignored).
+void IntervalDataFlowAnalysis::visitCallControlFlowTransfer(
+    mlir::CallOpInterface call, dataflow::CallControlFlowAction action,
+    const IntervalAnalysisLattice &before, IntervalAnalysisLattice *after
+) {
+  /// `action == CallControlFlowAction::Enter` indicates that:
+  ///   - `before` is the state before the call operation;
+  ///   - `after` is the state at the beginning of the callee entry block;
+  if (action == dataflow::CallControlFlowAction::EnterCallee) {
+    // We skip updating the incoming lattice for function calls,
+    // as values are relative to the containing function/struct, so we don't need to pollute
+    // the callee with the callers values.
+    setToEntryState(after);
+  }
+  /// `action == CallControlFlowAction::Exit` indicates that:
+  ///   - `before` is the state at the end of a callee exit block;
+  ///   - `after` is the state after the call operation.
+  else if (action == dataflow::CallControlFlowAction::ExitCallee) {
+    // Get the argument values of the lattice by getting the state as it would
+    // have been for the callsite.
+    dataflow::AbstractDenseLattice *beforeCall = nullptr;
+    if (auto *prev = call->getPrevNode()) {
+      beforeCall = getLattice(prev);
+    } else {
+      beforeCall = getLattice(call->getBlock());
+    }
+    ensure(beforeCall, "could not get prior lattice");
+
+    // The lattice at the return is the lattice before the call
+    propagateIfChanged(after, after->join(*beforeCall));
+  }
+  /// `action == CallControlFlowAction::External` indicates that:
+  ///   - `before` is the state before the call operation.
+  ///   - `after` is the state after the call operation, since there is no callee
+  ///      body to enter into.
+  else if (action == mlir::dataflow::CallControlFlowAction::ExternalCallee) {
+    // For external calls, we propagate what information we already have from
+    // before the call to after the call, since the external call won't invalidate
+    // any of that information. It also, conservatively, makes no assumptions about
+    // external calls and their computation, so CDG edges will not be computed over
+    // input arguments to external functions.
+    join(after, before);
+  }
+}
+
 void IntervalDataFlowAnalysis::visitOperation(
     mlir::Operation *op, const Lattice &before, Lattice *after
 ) {
@@ -597,22 +790,31 @@ void IntervalDataFlowAnalysis::visitOperation(
       continue;
     }
     // Else, look up the stored value by constrain ref.
-    // We only care about scalar type values, which is currently limited to:
-    // felt, index, etc.
-    if (!mlir::isa<FeltType>(val.getType())) {
+    // We only care about scalar type values, so we ignore composite types, which
+    // are currently limited to structs and arrays.
+    if (mlir::isa<StructType, ArrayType>(val.getType())) {
       operandVals.push_back(LatticeValue());
       continue;
     }
 
-    auto refSet = constrainRefLattice->getOrDefault(val);
-    if (!refSet.isSingleValue()) {
-      std::string valStr;
-      llvm::raw_string_ostream ss(valStr);
-      val.print(ss);
+    ConstrainRefLatticeValue refSet = constrainRefLattice->getOrDefault(val);
+    ensure(refSet.isScalar(), "should have ruled out array values already");
 
-      op->emitWarning(
-          "operand " + mlir::Twine(valStr) + " is not a single value, overapproximating"
-      );
+    if (refSet.getScalarValue().empty()) {
+      // If we can't compute the reference, then there must be some unsupported
+      // op the reference analysis cannot handle. We emit a warning and return
+      // early, since there's no meaningful computation we can do for this op.
+      std::string warning;
+      debug::Appender(warning
+      ) << "state of "
+        << val << " is empty; defining operation is unsupported by constrain ref analysis";
+      op->emitWarning(warning);
+      return;
+    } else if (!refSet.isSingleValue()) {
+      std::string warning;
+      debug::Appender(warning) << "operand " << val << " is not a single value " << refSet
+                               << ", overapproximating";
+      op->emitWarning(warning);
       operandVals.push_back(LatticeValue());
     } else {
       auto ref = refSet.getSingleValue();
@@ -652,94 +854,25 @@ void IntervalDataFlowAnalysis::visitOperation(
     auto constraint = intersection(smtSolver, lhsExpr, rhsExpr);
     // Update the LHS and RHS to the same value, but restricted intervals
     // based on the constraints
-    changed |= after->setValue(lhsVal, lhsExpr.withInterval(constraint.getInterval()));
-    changed |= after->setValue(rhsVal, rhsExpr.withInterval(constraint.getInterval()));
+    changed |= applyInterval(after, lhsVal, constraint.getInterval());
+    changed |= applyInterval(after, rhsVal, constraint.getInterval());
     changed |= after->addSolverConstraint(constraint);
-
   } else if (isAssertOp(op)) {
     ensure(operandVals.size() == 1, "assert op with the wrong number of operands");
-    // First, just add the solver constraint that the expression must be true.
+    // assert enforces that the operand is true. So we apply an interval of [1, 1]
+    // to the operand.
+    changed |= applyInterval(
+        after, op->getOperand(0), Interval::Degenerate(field.get(), field.get().one())
+    );
+    // Also add the solver constraint that the expression must be true.
     auto assertExpr = operandVals[0].getScalarValue();
     changed |= after->addSolverConstraint(assertExpr);
-    // Then, we want to do a lookback at the boolean expression that composes
-    // the assert expression and restrict the range on those values to be
-    // ranges that make the constraint hold.
-
-    // TODO: this currently only works for simple comparison cases and not
-    // conjunctions/disjunctions of comparisons.
-    if (auto cmpOp = mlir::dyn_cast<CmpOp>(op->getOperand(0).getDefiningOp())) {
-      auto lhs = cmpOp->getOperand(0);
-      auto rhs = cmpOp->getOperand(1);
-      auto lhsLatticeVal = before.getValue(lhs);
-      auto rhsLatticeVal = before.getValue(rhs);
-      ensure(
-          mlir::succeeded(lhsLatticeVal) && mlir::succeeded(rhsLatticeVal),
-          "no values for assert predecessors"
-      );
-      auto lhsExpr = lhsLatticeVal->getScalarValue();
-      auto rhsExpr = rhsLatticeVal->getScalarValue();
-
-      Interval newLhsInterval, newRhsInterval;
-      const auto &lhsInterval = lhsExpr.getInterval();
-      const auto &rhsInterval = rhsExpr.getInterval();
-
-      switch (cmpOp.getPredicate()) {
-      case FeltCmpPredicate::EQ: {
-        newLhsInterval = newRhsInterval = lhsInterval.intersect(rhsInterval);
-        break;
-      }
-      case FeltCmpPredicate::NE: {
-        if (lhsInterval.isDegenerate() && rhsInterval.isDegenerate() &&
-            lhsInterval == rhsInterval) {
-          // In this case, we know lhs and rhs cannot satisfy this assertion, so they have
-          // an empty value range.
-          newLhsInterval = newRhsInterval = Interval::Empty(field.get());
-        } else {
-          // Leave unchanged
-          newLhsInterval = lhsInterval;
-          newRhsInterval = rhsInterval;
-        }
-        break;
-      }
-      case FeltCmpPredicate::LT: {
-        newLhsInterval =
-            lhsInterval.toUnreduced().lt(rhsInterval.toUnreduced()).reduce(field.get());
-        newRhsInterval =
-            rhsInterval.toUnreduced().ge(lhsInterval.toUnreduced()).reduce(field.get());
-        break;
-      }
-      case FeltCmpPredicate::LE: {
-        newLhsInterval =
-            lhsInterval.toUnreduced().le(rhsInterval.toUnreduced()).reduce(field.get());
-        newRhsInterval =
-            rhsInterval.toUnreduced().gt(lhsInterval.toUnreduced()).reduce(field.get());
-        break;
-      }
-      case FeltCmpPredicate::GT: {
-        newLhsInterval =
-            lhsInterval.toUnreduced().gt(rhsInterval.toUnreduced()).reduce(field.get());
-        newRhsInterval =
-            rhsInterval.toUnreduced().le(lhsInterval.toUnreduced()).reduce(field.get());
-        break;
-      }
-      case FeltCmpPredicate::GE: {
-        newLhsInterval =
-            lhsInterval.toUnreduced().ge(rhsInterval.toUnreduced()).reduce(field.get());
-        newRhsInterval =
-            rhsInterval.toUnreduced().lt(lhsInterval.toUnreduced()).reduce(field.get());
-        break;
-      }
-      }
-
-      changed |= after->setValue(lhs, lhsExpr.withInterval(newLhsInterval));
-      changed |= after->setValue(rhs, rhsExpr.withInterval(newRhsInterval));
-    }
   } else if (!isReadOp(op)          /* We do not need to explicitly handle read ops
                       since they are resolved at the operand value step where constrain refs are
                       queries */
              && !isReturnOp(op)     /* We do not currently handle return ops as the analysis
                  is currently limited to constrain functions, which return no value. */
-             && !isDefinitionOp(op) /* The analysis ignores field, struct, function definitions. */
+             && !isDefinitionOp(op) /* The analysis ignores definition ops. */
              &&
              !mlir::isa<CreateStructOp>(op) /* We do not need to analyze the creation of structs. */
   ) {
@@ -776,13 +909,28 @@ llvm::SMTExprRef IntervalDataFlowAnalysis::createFeltSymbol(mlir::Value val) con
 }
 
 llvm::SMTExprRef IntervalDataFlowAnalysis::createFeltSymbol(const char *name) const {
-  return smtSolver->mkSymbol(name, smtSolver->getBitvectorSort(field.get().bitWidth()));
+  return field.get().createSymbol(smtSolver, name);
 }
 
 llvm::APSInt IntervalDataFlowAnalysis::getConst(mlir::Operation *op) const {
   ensure(isConstOp(op), "op is not a const op");
-  auto fieldConst =
-      mlir::dyn_cast<FeltConstantOp>(op).getValueAttr().getValue().zext(field.get().bitWidth());
+
+  llvm::APInt fieldConst =
+      TypeSwitch<Operation *, llvm::APInt>(op)
+          .Case<FeltConstantOp>([&](FeltConstantOp feltConst) {
+    return feltConst.getValueAttr().getValue().zext(field.get().bitWidth());
+  })
+          .Case<mlir::arith::ConstantIndexOp>([&](mlir::arith::ConstantIndexOp indexConst) {
+    return llvm::APInt(field.get().bitWidth(), indexConst.value());
+  })
+          .Case<mlir::arith::ConstantIntOp>([&](mlir::arith::ConstantIntOp intConst) {
+    return llvm::APInt(field.get().bitWidth(), intConst.value());
+  }).Default([&](Operation *illegalOp) {
+    std::string err;
+    debug::Appender(err) << "unhandled getConst case: " << *illegalOp;
+    llvm::report_fatal_error(Twine(err));
+    return llvm::APInt();
+  });
   return llvm::APSInt(fieldConst);
 }
 
@@ -792,25 +940,26 @@ ExpressionValue IntervalDataFlowAnalysis::performBinaryArithmetic(
   ensure(isArithmeticOp(op), "is not arithmetic op");
 
   auto lhs = a.getScalarValue(), rhs = b.getScalarValue();
+  ensure(lhs.getExpr(), "cannot perform arithmetic over null lhs smt expr");
+  ensure(rhs.getExpr(), "cannot perform arithmetic over null rhs smt expr");
 
-  if (mlir::isa<AddFeltOp>(op)) {
-    return add(smtSolver, lhs, rhs);
-  } else if (mlir::isa<SubFeltOp>(op)) {
-    return sub(smtSolver, lhs, rhs);
-  } else if (mlir::isa<MulFeltOp>(op)) {
-    return mul(smtSolver, lhs, rhs);
-  } else if (mlir::isa<DivFeltOp>(op)) {
-    return div(smtSolver, lhs, rhs);
-  } else if (mlir::isa<ModFeltOp>(op)) {
-    return mod(smtSolver, lhs, rhs);
-  } else if (auto cmpOp = mlir::dyn_cast<CmpOp>(op)) {
+  auto res = TypeSwitch<Operation *, ExpressionValue>(op)
+                 .Case<AddFeltOp>([&](AddFeltOp _) { return add(smtSolver, lhs, rhs); })
+                 .Case<SubFeltOp>([&](SubFeltOp _) { return sub(smtSolver, lhs, rhs); })
+                 .Case<MulFeltOp>([&](MulFeltOp _) { return mul(smtSolver, lhs, rhs); })
+                 .Case<DivFeltOp>([&](DivFeltOp op) { return div(smtSolver, op, lhs, rhs); })
+                 .Case<ModFeltOp>([&](ModFeltOp _) { return mod(smtSolver, lhs, rhs); })
+                 .Case<CmpOp>([&](CmpOp cmpOp) {
     return cmp(smtSolver, cmpOp, lhs, rhs);
-  } else {
-    op->emitWarning(
+  }).Default([&](Operation *unsupported) {
+    unsupported->emitWarning(
         "unsupported binary arithmetic operation, defaulting to over-approximated intervals"
     );
-    return fallbackBinaryOp(smtSolver, op, lhs, rhs);
-  }
+    return fallbackBinaryOp(smtSolver, unsupported, lhs, rhs);
+  });
+
+  ensure(res.getExpr(), "arithmetic produced null smt expr");
+  return res;
 }
 
 ExpressionValue
@@ -818,17 +967,162 @@ IntervalDataFlowAnalysis::performUnaryArithmetic(mlir::Operation *op, const Latt
   ensure(isArithmeticOp(op), "is not arithmetic op");
 
   auto val = a.getScalarValue();
+  ensure(val.getExpr(), "cannot perform arithmetic over null smt expr");
 
-  if (mlir::isa<NegFeltOp>(op)) {
-    return neg(smtSolver, val);
-  } else if (mlir::isa<NotFeltOp>(op)) {
+  auto res = TypeSwitch<Operation *, ExpressionValue>(op)
+                 .Case<NegFeltOp>([&](NegFeltOp _) { return neg(smtSolver, val); })
+                 .Case<NotFeltOp>([&](NotFeltOp _) {
     return notOp(smtSolver, val);
-  } else {
-    llvm::report_fatal_error(
-        "unsupported unary arithmetic operation " + mlir::Twine(op->getName().getStringRef())
+  }).Default([&](Operation *unsupported) {
+    unsupported->emitWarning(
+        "unsupported unary arithmetic operation, defaulting to over-approximated interval"
     );
-    return ExpressionValue();
+    return fallbackUnaryOp(smtSolver, unsupported, val);
+  });
+
+  ensure(res.getExpr(), "arithmetic produced null smt expr");
+  return res;
+}
+
+ChangeResult
+IntervalDataFlowAnalysis::applyInterval(Lattice *after, Value val, Interval newInterval) {
+  auto latValRes = after->getValue(val);
+  if (failed(latValRes)) {
+    // visitOperation didn't add val to the lattice, so there's nothing to do
+    return ChangeResult::NoChange;
   }
+  ChangeResult res = after->setValue(val, latValRes->getScalarValue().withInterval(newInterval));
+  // Now we descend into val's operands, if it has any.
+  Operation *definingOp = val.getDefiningOp();
+  if (!definingOp) {
+    return res;
+  }
+
+  const Field &f = field.get();
+
+  // This is a rules-based operation. If we have a rule for a given operation,
+  // then we can make some kind of update, otherwise we leave the intervals
+  // as is.
+  // - First we'll define all the rules so the type switch can be less messy
+
+  // cmp.<pred> restricts each side of the comparison if the result is known.
+  auto cmpCase = [&](CmpOp cmpOp) {
+    // Cmp output range is [0, 1], so in order to do something, we must have newInterval
+    // either "true" (1) or "false" (0)
+    Interval maxInterval = Interval::Boolean(f);
+    ensure(
+        newInterval.intersect(maxInterval).isNotEmpty(),
+        "new interval for CmpOp outside of allowed boolean range or is empty"
+    );
+    if (!newInterval.isDegenerate()) {
+      // The comparison result is unknown, so we can't update the operand ranges
+      return ChangeResult::NoChange;
+    }
+
+    bool cmpTrue = newInterval.rhs() == f.one();
+
+    Value lhs = cmpOp->getOperand(0), rhs = cmpOp->getOperand(1);
+    auto lhsLatValRes = after->getValue(lhs), rhsLatValRes = after->getValue(rhs);
+    if (failed(lhsLatValRes) || failed(rhsLatValRes)) {
+      return ChangeResult::NoChange;
+    }
+    ExpressionValue lhsExpr = lhsLatValRes->getScalarValue(),
+                    rhsExpr = rhsLatValRes->getScalarValue();
+
+    Interval newLhsInterval, newRhsInterval;
+    const Interval &lhsInterval = lhsExpr.getInterval();
+    const Interval &rhsInterval = rhsExpr.getInterval();
+
+    FeltCmpPredicate pred = cmpOp.getPredicate();
+    // predicate cases
+    auto eqCase = [&]() {
+      return (pred == FeltCmpPredicate::EQ && cmpTrue) ||
+             (pred == FeltCmpPredicate::NE && !cmpTrue);
+    };
+    auto neCase = [&]() {
+      return (pred == FeltCmpPredicate::NE && cmpTrue) ||
+             (pred == FeltCmpPredicate::EQ && !cmpTrue);
+    };
+    auto ltCase = [&]() {
+      return (pred == FeltCmpPredicate::LT && cmpTrue) ||
+             (pred == FeltCmpPredicate::GE && !cmpTrue);
+    };
+    auto leCase = [&]() {
+      return (pred == FeltCmpPredicate::LE && cmpTrue) ||
+             (pred == FeltCmpPredicate::GT && !cmpTrue);
+    };
+    auto gtCase = [&]() {
+      return (pred == FeltCmpPredicate::GT && cmpTrue) ||
+             (pred == FeltCmpPredicate::LE && !cmpTrue);
+    };
+    auto geCase = [&]() {
+      return (pred == FeltCmpPredicate::GE && cmpTrue) ||
+             (pred == FeltCmpPredicate::LT && !cmpTrue);
+    };
+
+    // new intervals based on case
+    if (eqCase()) {
+      newLhsInterval = newRhsInterval = lhsInterval.intersect(rhsInterval);
+    } else if (neCase()) {
+      if (lhsInterval.isDegenerate() && rhsInterval.isDegenerate() && lhsInterval == rhsInterval) {
+        // In this case, we know lhs and rhs cannot satisfy this assertion, so they have
+        // an empty value range.
+        newLhsInterval = newRhsInterval = Interval::Empty(f);
+      } else {
+        // Leave unchanged
+        newLhsInterval = lhsInterval;
+        newRhsInterval = rhsInterval;
+      }
+    } else if (ltCase()) {
+      newLhsInterval = lhsInterval.toUnreduced().computeLTPart(rhsInterval.toUnreduced()).reduce(f);
+      newRhsInterval = rhsInterval.toUnreduced().computeGEPart(lhsInterval.toUnreduced()).reduce(f);
+    } else if (leCase()) {
+      newLhsInterval = lhsInterval.toUnreduced().computeLEPart(rhsInterval.toUnreduced()).reduce(f);
+      newRhsInterval = rhsInterval.toUnreduced().computeGTPart(lhsInterval.toUnreduced()).reduce(f);
+    } else if (gtCase()) {
+      newLhsInterval = lhsInterval.toUnreduced().computeGTPart(rhsInterval.toUnreduced()).reduce(f);
+      newRhsInterval = rhsInterval.toUnreduced().computeLEPart(lhsInterval.toUnreduced()).reduce(f);
+    } else if (geCase()) {
+      newLhsInterval = lhsInterval.toUnreduced().computeGEPart(rhsInterval.toUnreduced()).reduce(f);
+      newRhsInterval = rhsInterval.toUnreduced().computeLTPart(lhsInterval.toUnreduced()).reduce(f);
+    } else {
+      cmpOp->emitWarning("unhandled cmp predicate");
+      return ChangeResult::NoChange;
+    }
+
+    // Now we recurse to each operand
+    return applyInterval(after, lhs, newLhsInterval) | applyInterval(after, rhs, newRhsInterval);
+  };
+
+  // If the result of a multiplication is non-zero, then both operands must be
+  // non-zero.
+  auto mulCase = [&](MulFeltOp mulOp) {
+    auto zeroInt = Interval::Degenerate(f, f.zero());
+    if (newInterval.intersect(zeroInt).isNotEmpty()) {
+      // The multiplication may be zero, so we can't reduce the operands to be non-zero
+      return ChangeResult::NoChange;
+    }
+
+    Value lhs = mulOp->getOperand(0), rhs = mulOp->getOperand(1);
+    auto lhsLatValRes = after->getValue(lhs), rhsLatValRes = after->getValue(rhs);
+    if (failed(lhsLatValRes) || failed(rhsLatValRes)) {
+      return ChangeResult::NoChange;
+    }
+    ExpressionValue lhsExpr = lhsLatValRes->getScalarValue(),
+                    rhsExpr = rhsLatValRes->getScalarValue();
+    Interval newLhsInterval = lhsExpr.getInterval().difference(zeroInt);
+    Interval newRhsInterval = rhsExpr.getInterval().difference(zeroInt);
+    return applyInterval(after, lhs, newLhsInterval) | applyInterval(after, rhs, newRhsInterval);
+  };
+
+  // - Apply the rules given the op.
+  res |= TypeSwitch<Operation *, ChangeResult>(definingOp)
+             .Case<CmpOp>([&](CmpOp op) { return cmpCase(op); })
+             .Case<MulFeltOp>([&](MulFeltOp op) {
+    return mulCase(op);
+  }).Default([&](Operation *_) { return ChangeResult::NoChange; });
+
+  return res;
 }
 
 /* StructIntervals */
@@ -845,7 +1139,7 @@ mlir::LogicalResult StructIntervals::computeIntervals(
   constrainSolverConstraints = constrainLattice->getConstraints();
 
   for (const auto &ref : ConstrainRef::getAllConstrainRefs(structDef)) {
-    // Don't compute ranges for structs, that doesn't make any sense.
+    // We only want to compute intervals for field elements and not composite types
     if (!ref.isScalar()) {
       continue;
     }

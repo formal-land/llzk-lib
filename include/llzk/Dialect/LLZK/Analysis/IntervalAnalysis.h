@@ -14,6 +14,7 @@
 #include "llzk/Dialect/LLZK/Analysis/ConstraintDependencyGraph.h"
 #include "llzk/Dialect/LLZK/Analysis/DenseAnalysis.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
+#include "llzk/Dialect/LLZK/Util/APIntHelper.h"
 #include "llzk/Dialect/LLZK/Util/Compare.h"
 
 #include <mlir/IR/BuiltinOps.h>
@@ -37,7 +38,6 @@ class Field {
 public:
   /// @brief Get a Field from a given field name string.
   /// @param fieldName The name of the field.
-  /// @return
   static const Field &getField(const char *fieldName);
 
   Field() = delete;
@@ -46,35 +46,33 @@ public:
   Field &operator=(const Field &) = default;
 
   /// @brief For the prime field p, returns p.
-  /// @return
   llvm::APSInt prime() const { return primeMod; }
 
   /// @brief Returns p / 2.
-  /// @return
   llvm::APSInt half() const { return halfPrime; }
 
   /// @brief Returns i as a field element
   inline llvm::APSInt felt(unsigned i) const { return reduce(i); }
 
   /// @brief Returns 0 at the bitwidth of the field.
-  /// @return
   inline llvm::APSInt zero() const { return felt(0); }
 
   /// @brief Returns 1 at the bitwidth of the field.
-  /// @return
   inline llvm::APSInt one() const { return felt(1); }
 
   /// @brief Returns p - 1, which is the max value possible in a prime field described by p.
-  /// @return
   inline llvm::APSInt maxVal() const { return prime() - one(); }
 
   /// @brief Returns i mod p and reduces the result into the appropriate bitwidth.
-  /// @param i
-  /// @return
   llvm::APSInt reduce(llvm::APSInt i) const;
   llvm::APSInt reduce(unsigned i) const;
 
-  unsigned bitWidth() const { return primeMod.getBitWidth(); }
+  inline unsigned bitWidth() const { return primeMod.getBitWidth(); }
+
+  /// @brief Create a SMT solver symbol with the current field's bitwidth.
+  llvm::SMTExprRef createSymbol(llvm::SMTSolverRef solver, const char *name) const {
+    return solver->mkSymbol(name, solver->getBitvectorSort(bitWidth()));
+  }
 
   friend bool operator==(const Field &lhs, const Field &rhs) {
     return lhs.primeMod == rhs.primeMod;
@@ -111,6 +109,9 @@ public:
   }
 
   UnreducedInterval(llvm::APSInt x, llvm::APSInt y) : a(x), b(y) {}
+  UnreducedInterval(llvm::APInt x, llvm::APInt y) : a(x), b(y) {}
+  /// @brief This constructor is primarily for convenience for unit tests.
+  UnreducedInterval(uint64_t x, uint64_t y) : a(llvm::APInt(64, x)), b(llvm::APInt(64, y)) {}
 
   /* Operations */
 
@@ -129,25 +130,45 @@ public:
   /// @return
   UnreducedInterval doUnion(const UnreducedInterval &rhs) const;
 
-  /// @brief Return the part of the interval that is less than rhs's upper bound.
-  /// @param rhs
-  /// @return
-  UnreducedInterval lt(const UnreducedInterval &rhs) const;
+  /// @brief Return the part of the interval that is guaranteed to be less than
+  /// the rhs's max value.
+  ///
+  /// For example, given *this = [0, 7] and rhs = [3, 5], this function would
+  /// return [0, 4], since rhs has a max value of 5. If this interval's lower
+  /// bound is greater than or equal to the rhs's upper bound, the returned
+  /// interval will be "empty" (an interval where a > b). For example,
+  /// if *this = [7, 10] and rhs = [0, 7], then no part of *this is less than rhs.
+  UnreducedInterval computeLTPart(const UnreducedInterval &rhs) const;
 
-  /// @brief Return the part of the interval that is less than or equal to the rhs's upper bound.
-  /// @param rhs
-  /// @return
-  UnreducedInterval le(const UnreducedInterval &rhs) const;
+  /// @brief Return the part of the interval that is less than or equal to the
+  /// rhs's upper bound.
+  ///
+  /// For example, given *this = [0, 7] and rhs = [3, 5], this function would
+  /// return [0, 5], since rhs has a max value of 5. If this interval's lower
+  /// bound is greater than to the rhs's upper bound, the returned
+  /// interval will be "empty" (an interval where a > b). For example, if
+  /// *this = [8, 10] and rhs = [0, 7], then no part of *this is less than or equal to rhs.
+  UnreducedInterval computeLEPart(const UnreducedInterval &rhs) const;
 
-  /// @brief Return the part of the interval that is greater than the rhs's lower bound.
-  /// @param rhs
-  /// @return
-  UnreducedInterval gt(const UnreducedInterval &rhs) const;
+  /// @brief Return the part of the interval that is greater than the rhs's
+  /// lower bound.
+  ///
+  /// For example, given *this = [0, 7] and rhs = [3, 5], this function would
+  /// return [4, 7], since rhs has a minimum value of 3. If this interval's
+  /// upper bound is less than or equal to the rhs's lower bound, the returned
+  /// interval will be "empty" (an interval where a > b). For example,
+  /// if *this = [0, 7] and rhs = [7, 10], then no part of *this is greater than rhs.
+  UnreducedInterval computeGTPart(const UnreducedInterval &rhs) const;
 
-  /// @brief Return the part of the interval that is greater than or equal to the rhs's lower bound.
-  /// @param rhs
-  /// @return
-  UnreducedInterval ge(const UnreducedInterval &rhs) const;
+  /// @brief Return the part of the interval that is greater than or equal to
+  /// the rhs's lower bound.
+  ///
+  /// For example, given *this = [0, 7] and rhs = [3, 5], this function would
+  /// return [3, 7], since rhs has a minimum value of 3. If this interval's
+  /// upper bound is less than the rhs's lower bound, the returned
+  /// interval will be "empty" (an interval where a > b). For example, if
+  /// *this = [0, 6] and rhs = [7, 10], then no part of *this is greater than or equal to rhs.
+  UnreducedInterval computeGEPart(const UnreducedInterval &rhs) const;
 
   UnreducedInterval operator-() const;
   friend UnreducedInterval operator+(const UnreducedInterval &lhs, const UnreducedInterval &rhs);
@@ -157,14 +178,26 @@ public:
   /* Comparisons */
 
   bool overlaps(const UnreducedInterval &rhs) const;
+
   friend std::strong_ordering
   operator<=>(const UnreducedInterval &lhs, const UnreducedInterval &rhs);
+
+  friend bool operator==(const UnreducedInterval &lhs, const UnreducedInterval &rhs) {
+    return std::is_eq(lhs <=> rhs);
+  };
 
   /* Utility */
   llvm::APSInt getLHS() const { return a; }
   llvm::APSInt getRHS() const { return b; }
 
-  llvm::APSInt width() const { return llvm::APSInt((b - a).abs()); }
+  /// @brief Compute the width of this interval within a given field `f`.
+  /// If `a` > `b`, returns 0. Otherwise, returns `b` - `a` + 1.
+  llvm::APSInt width() const;
+
+  /// @brief Returns true iff width() is zero.
+  bool isEmpty() const;
+
+  bool isNotEmpty() const { return !isEmpty(); }
 
   void print(llvm::raw_ostream &os) const { os << "Unreduced:[ " << a << ", " << b << " ]"; }
 
@@ -192,13 +225,13 @@ private:
 ///
 /// Internal range can be further split into 3 categories:
 /// (A) a, b < p/2.                                             E.g., [10, 12]
-/// (B) a, b > p/2.       OR: a, b \in {-p/2, 0}.               E.g., [p-4, p-2]         === [-4,
-/// -2] (C) a < p/2, b > p/2.                                       E.g., [p/2 - 5, p/2 + 5]
+/// (B) a, b > p/2.       OR: a, b \in {-p/2, 0}.               E.g., [p-4, p-2] === [-4, -2]
+/// (C) a < p/2, b > p/2.                                       E.g., [p/2 - 5, p/2 + 5]
 ///
 /// External range can be further split into 3 categories:
-/// (D) a, b < p/2.       OR: a \in {-p, -p/2}, b \in {0, p/2}. E.g., [12, 10]           === [-p+12,
-/// 10] (E) a, b > p/2.       OR: a \in {-p/2, 0} , b \in {p/2, p}. E.g., [p-2, p-4]         ===
-/// [-2, p-4] (F) a > p/2, b < p/2. OR: a \in {-p/2, 0} , b \in {0, p/2}. E.g., [p/2 + 5, p/2 - 5]
+/// (D) a, b < p/2.       OR: a \in {-p, -p/2}, b \in {0, p/2}. E.g., [12, 10] === [-p+12, 10]
+/// (E) a, b > p/2.       OR: a \in {-p/2, 0} , b \in {p/2, p}. E.g., [p-2, p-4] === [-2, p-4]
+/// (F) a > p/2, b < p/2. OR: a \in {-p/2, 0} , b \in {0, p/2}. E.g., [p/2 + 5, p/2 - 5]
 /// === [-p/2 + 5, p/2 - 5]
 ///
 /// <------------------------------------------------------------->
@@ -305,16 +338,26 @@ public:
     return ((a.ty == std::get<0>(Pairs) && b.ty == std::get<1>(Pairs)) || ...);
   }
 
-  Interval &join(const Interval &rhs) {
-    llvm::report_fatal_error("todo");
-    return *this;
-  }
-
   /// Union
   Interval join(const Interval &rhs) const;
 
   /// Intersect
   Interval intersect(const Interval &rhs) const;
+
+  /// @brief Computes and returns `this` - (`this` & `other`) if the operation
+  /// produces a single interval.
+  ///
+  /// Note that this is an interval difference, not a subtraction operation
+  /// like the `operator-` below.
+  ///
+  /// For example, given `*this` = [1, 10] and `other` = [5, 11], this function
+  /// would return [1, 4], as `this` & `other` (the intersection) = [5, 10], so
+  /// [1, 10] - [5, 10] = [1, 4].
+  ///
+  /// For example, given `*this` = [1, 10] and `other` = [5, 6], this function
+  /// should return [1, 4] and [7, 10], but we don't support having multiple
+  /// disjoint intervals, so `this` is returned as-is.
+  Interval difference(const Interval &other) const;
 
   /* arithmetic ops */
 
@@ -322,20 +365,22 @@ public:
   friend Interval operator+(const Interval &lhs, const Interval &rhs);
   friend Interval operator-(const Interval &lhs, const Interval &rhs);
   friend Interval operator*(const Interval &lhs, const Interval &rhs);
-  friend Interval operator/(const Interval &lhs, const Interval &rhs);
   friend Interval operator%(const Interval &lhs, const Interval &rhs);
+  /// @brief Returns failure if a division-by-zero is encountered.
+  friend mlir::FailureOr<Interval> operator/(const Interval &lhs, const Interval &rhs);
 
   /* Checks and Comparisons */
 
-  bool isEmpty() const { return ty == Type::Empty; }
-  bool isDegenerate() const { return ty == Type::Degenerate; }
-  bool isEntire() const { return ty == Type::Entire; }
-  bool isTypeA() const { return ty == Type::TypeA; }
-  bool isTypeB() const { return ty == Type::TypeB; }
-  bool isTypeC() const { return ty == Type::TypeC; }
-  bool isTypeF() const { return ty == Type::TypeF; }
+  inline bool isEmpty() const { return ty == Type::Empty; }
+  inline bool isNotEmpty() const { return !isEmpty(); }
+  inline bool isDegenerate() const { return ty == Type::Degenerate; }
+  inline bool isEntire() const { return ty == Type::Entire; }
+  inline bool isTypeA() const { return ty == Type::TypeA; }
+  inline bool isTypeB() const { return ty == Type::TypeB; }
+  inline bool isTypeC() const { return ty == Type::TypeC; }
+  inline bool isTypeF() const { return ty == Type::TypeF; }
 
-  template <Type... Types> bool isOneOf() const { return ((ty == Types) || ...); }
+  template <Type... Types> bool is() const { return ((ty == Types) || ...); }
 
   bool operator==(const Interval &rhs) const { return ty == rhs.ty && a == rhs.a && b == rhs.b; }
 
@@ -344,6 +389,9 @@ public:
   const Field &getField() const { return field.get(); }
 
   llvm::APSInt width() const { return llvm::APSInt((b - a).abs().zext(field.get().bitWidth())); }
+
+  llvm::APSInt lhs() const { return a; }
+  llvm::APSInt rhs() const { return b; }
 
   /* Utility */
   struct Hash {
@@ -363,7 +411,7 @@ public:
 private:
   Interval(Type t, const Field &f) : field(f), ty(t), a(f.zero()), b(f.zero()) {}
   Interval(Type t, const Field &f, llvm::APSInt lhs, llvm::APSInt rhs)
-      : field(f), ty(t), a(lhs.zext(f.bitWidth())), b(rhs.zext(f.bitWidth())) {}
+      : field(f), ty(t), a(lhs.extend(f.bitWidth())), b(rhs.extend(f.bitWidth())) {}
 
   std::reference_wrapper<const Field> field;
   Type ty;
@@ -439,7 +487,8 @@ public:
   mul(llvm::SMTSolverRef solver, const ExpressionValue &lhs, const ExpressionValue &rhs);
 
   friend ExpressionValue
-  div(llvm::SMTSolverRef solver, const ExpressionValue &lhs, const ExpressionValue &rhs);
+  div(llvm::SMTSolverRef solver, DivFeltOp op, const ExpressionValue &lhs,
+      const ExpressionValue &rhs);
 
   friend ExpressionValue
   mod(llvm::SMTSolverRef solver, const ExpressionValue &lhs, const ExpressionValue &rhs);
@@ -463,6 +512,9 @@ public:
   friend ExpressionValue neg(llvm::SMTSolverRef solver, const ExpressionValue &val);
 
   friend ExpressionValue notOp(llvm::SMTSolverRef solver, const ExpressionValue &val);
+
+  friend ExpressionValue
+  fallbackUnaryOp(llvm::SMTSolverRef solver, mlir::Operation *op, const ExpressionValue &val);
 
   /* Utility */
 
@@ -561,9 +613,7 @@ public:
   void visitCallControlFlowTransfer(
       mlir::CallOpInterface call, dataflow::CallControlFlowAction action, const Lattice &before,
       Lattice *after
-  ) override {
-    propagateIfChanged(after, after->join(before));
-  }
+  ) override;
 
   void visitOperation(mlir::Operation *op, const Lattice &before, Lattice *after) override;
 
@@ -589,7 +639,9 @@ private:
 
   llvm::SMTExprRef createFeltSymbol(const char *name) const;
 
-  bool isConstOp(mlir::Operation *op) const { return mlir::isa<FeltConstantOp>(op); }
+  bool isConstOp(mlir::Operation *op) const {
+    return mlir::isa<FeltConstantOp, mlir::arith::ConstantIndexOp, mlir::arith::ConstantIntOp>(op);
+  }
 
   llvm::APSInt getConst(mlir::Operation *op) const;
 
@@ -611,6 +663,14 @@ private:
   performBinaryArithmetic(mlir::Operation *op, const LatticeValue &a, const LatticeValue &b);
 
   ExpressionValue performUnaryArithmetic(mlir::Operation *op, const LatticeValue &a);
+
+  /// @brief Recursively applies the new interval to the val's lattice value and to that value's
+  /// operands, if possible. For example, if we know that X*Y is non-zero, then we know X and Y are
+  /// non-zero, and can update X and Y's intervals accordingly.
+  /// @param after The current lattice state. Assumes that this has already been joined with the
+  /// `before` lattice in `visitOperation`, so lookups and updates can be performed on the `after`
+  /// lattice alone.
+  mlir::ChangeResult applyInterval(Lattice *after, mlir::Value val, Interval newInterval);
 
   bool isBoolOp(mlir::Operation *op) const {
     return mlir::isa<AndBoolOp, OrBoolOp, XorBoolOp, NotBoolOp>(op);
@@ -645,7 +705,7 @@ private:
   bool isExtractArrayOp(mlir::Operation *op) const { return mlir::isa<ExtractArrayOp>(op); }
 
   bool isDefinitionOp(mlir::Operation *op) const {
-    return mlir::isa<StructDefOp, FuncOp, FieldDefOp>(op);
+    return mlir::isa<StructDefOp, FuncOp, FieldDefOp, GlobalDefOp, mlir::ModuleOp>(op);
   }
 
   bool isCallOp(mlir::Operation *op) const { return mlir::isa<CallOp>(op); }
@@ -704,6 +764,14 @@ public:
   );
 
   void print(mlir::raw_ostream &os, bool withConstraints = false) const;
+
+  const llvm::MapVector<ConstrainRef, Interval> &getIntervals() const {
+    return constrainFieldRanges;
+  }
+
+  const llvm::SetVector<ExpressionValue> getSolverConstraints() const {
+    return constrainSolverConstraints;
+  }
 
   friend mlir::raw_ostream &operator<<(mlir::raw_ostream &os, const StructIntervals &si) {
     si.print(os);
@@ -805,7 +873,8 @@ template <> struct DenseMapInfo<llzk::ExpressionValue> {
     return llzk::ExpressionValue::Hash {}(e);
   }
   static bool isEqual(const llzk::ExpressionValue &lhs, const llzk::ExpressionValue &rhs) {
-    if (lhs.getExpr() == getEmptyExpr() || lhs.getExpr() == getTombstoneExpr()) {
+    if (lhs.getExpr() == getEmptyExpr() || lhs.getExpr() == getTombstoneExpr() ||
+        rhs.getExpr() == getEmptyExpr() || rhs.getExpr() == getTombstoneExpr()) {
       return lhs.getExpr() == rhs.getExpr();
     }
     return lhs == rhs;
