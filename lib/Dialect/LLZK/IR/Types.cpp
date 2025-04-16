@@ -306,6 +306,8 @@ public:
       } else if (no_var && !llvm::isa<IntegerAttr>(a)) {
         TypeList<IntegerAttr>::reportInvalid(emitError, a, "Concrete array dimension");
         success = false;
+      } else if (failed(verifyAffineMapAttrType(emitError, a))) {
+        success = false;
       } else if (failed(verifyIntAttrType(emitError, a))) {
         success = false;
       }
@@ -374,6 +376,8 @@ public:
         }
       } else if (no_var && !llvm::isa<IntegerAttr>(p)) {
         TypeList<IntegerAttr>::reportInvalid(emitError, p, "Concrete struct parameter");
+        success = false;
+      } else if (failed(verifyAffineMapAttrType(emitError, p))) {
         success = false;
       } else if (failed(verifyIntAttrType(emitError, p))) {
         success = false;
@@ -700,6 +704,24 @@ LogicalResult verifyIntAttrType(EmitErrorFn emitError, Attribute in) {
   return success();
 }
 
+LogicalResult verifyAffineMapAttrType(EmitErrorFn emitError, Attribute in) {
+  if (AffineMapAttr affineAttr = llvm::dyn_cast<AffineMapAttr>(in)) {
+    AffineMap map = affineAttr.getValue();
+    if (map.getNumResults() != 1) {
+      if (emitError) {
+        emitError()
+            .append(
+                "AffineMapAttr must yield a single result, but found ", map.getNumResults(),
+                " results"
+            )
+            .report();
+      }
+      return failure();
+    }
+  }
+  return success();
+}
+
 ParseResult parseAttrVec(AsmParser &parser, SmallVector<Attribute> &value) {
   auto parseResult = FieldParser<SmallVector<Attribute>>::parse(parser);
   if (failed(parseResult)) {
@@ -788,7 +810,7 @@ LogicalResult StructType::verifySymbolRef(SymbolTableCollection &symbolTable, Op
 
 LogicalResult StructType::hasColumns(SymbolTableCollection &symbolTable, Operation *op) const {
   auto lookup = getDefinition(symbolTable, op);
-  if (mlir::failed(lookup)) {
+  if (failed(lookup)) {
     return lookup;
   }
   return lookup->get().hasColumns();
