@@ -1298,6 +1298,24 @@ DeletionKind ArrayAccessOpInterface::rewire(
 // ReadArrayOp
 //===------------------------------------------------------------------===//
 
+namespace {
+
+LogicalResult
+ensureNumIndicesMatchDims(ArrayType ty, size_t numIndices, const OwningEmitErrorFn &errFn) {
+  ArrayRef<Attribute> dims = ty.getDimensionSizes();
+  // Ensure the number of provided indices matches the array dimensions
+  auto compare = numIndices <=> dims.size();
+  if (compare != 0) {
+    return errFn().append(
+        "has ", (compare < 0 ? "insufficient" : "too many"), " indexed dimensions: expected ",
+        dims.size(), " but found ", numIndices
+    );
+  }
+  return success();
+}
+
+} // namespace
+
 LogicalResult ReadArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
   // Ensure any SymbolRef used in the type are valid
   return verifyTypeResolution(tables, *this, ArrayRef<Type> {getArrRef().getType(), getType()});
@@ -1316,6 +1334,11 @@ LogicalResult ReadArrayOp::inferReturnTypes(
 
 bool ReadArrayOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   return singletonTypeListsUnify(l, r);
+}
+
+LogicalResult ReadArrayOp::verify() {
+  // Ensure the number of indices used match the shape of the array exactly.
+  return ensureNumIndicesMatchDims(getArrRefType(), getIndices().size(), getEmitOpErrFn(this));
 }
 
 /// Required by PromotableMemOpInterface / mem2reg pass
@@ -1348,8 +1371,13 @@ DeletionKind ReadArrayOp::removeBlockingUses(
 LogicalResult WriteArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
   // Ensure any SymbolRef used in the type are valid
   return verifyTypeResolution(
-      tables, *this, ArrayRef<Type> {getArrRef().getType(), getRvalue().getType()}
+      tables, *this, ArrayRef<Type> {getArrRefType(), getRvalue().getType()}
   );
+}
+
+LogicalResult WriteArrayOp::verify() {
+  // Ensure the number of indices used match the shape of the array exactly.
+  return ensureNumIndicesMatchDims(getArrRefType(), getIndices().size(), getEmitOpErrFn(this));
 }
 
 /// Required by PromotableMemOpInterface / mem2reg pass
@@ -1379,7 +1407,7 @@ DeletionKind WriteArrayOp::removeBlockingUses(
 
 LogicalResult ExtractArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
   // Ensure any SymbolRef used in the type are valid
-  return verifyTypeResolution(tables, *this, getArrRef().getType());
+  return verifyTypeResolution(tables, *this, getArrRefType());
 }
 
 LogicalResult ExtractArrayOp::inferReturnTypes(
@@ -1425,16 +1453,14 @@ bool ExtractArrayOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
 LogicalResult InsertArrayOp::verifySymbolUses(SymbolTableCollection &tables) {
   // Ensure any SymbolRef used in the types are valid
   return verifyTypeResolution(
-      tables, *this, ArrayRef<Type> {getArrRef().getType(), getRvalue().getType()}
+      tables, *this, ArrayRef<Type> {getArrRefType(), getRvalue().getType()}
   );
 }
 
 LogicalResult InsertArrayOp::verify() {
   size_t numIndices = getIndices().size();
 
-  Type baseArrRefType = getArrRef().getType();
-  assert(llvm::isa<ArrayType>(baseArrRefType)); // per ODS spec of InsertArrayOp
-  ArrayType baseArrRefArrType = llvm::cast<ArrayType>(baseArrRefType);
+  ArrayType baseArrRefArrType = getArrRefType();
 
   Type rValueType = getRvalue().getType();
   assert(llvm::isa<ArrayType>(rValueType)); // per ODS spec of InsertArrayOp
@@ -1487,7 +1513,7 @@ LogicalResult InsertArrayOp::verify() {
 
 LogicalResult ArrayLengthOp::verifySymbolUses(SymbolTableCollection &tables) {
   // Ensure any SymbolRef used in the type are valid
-  return verifyTypeResolution(tables, *this, getArrRef().getType());
+  return verifyTypeResolution(tables, *this, getArrRefType());
 }
 
 //===------------------------------------------------------------------===//

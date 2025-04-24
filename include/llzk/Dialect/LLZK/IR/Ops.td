@@ -647,6 +647,8 @@ def LLZK_ReadArrayOp
   let assemblyFormat = [{
     $arr_ref `[` $indices `]` `:` type($arr_ref) `,` type($result) attr-dict
   }];
+
+  let hasVerifier = 1;
 }
 
 def LLZK_WriteArrayOp
@@ -682,6 +684,8 @@ def LLZK_WriteArrayOp
   let assemblyFormat = [{
     $arr_ref `[` $indices `]` `=` $rvalue `:` type($arr_ref) `,` type($rvalue) attr-dict
   }];
+
+  let hasVerifier = 1;
 }
 
 def LLZK_ExtractArrayOp
