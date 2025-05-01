@@ -10,8 +10,9 @@
 #pragma once
 
 #include "llzk/Dialect/LLZK/IR/Dialect.h"
+#include "llzk/Dialect/LLZK/Util/AttributeHelper.h"
 #include "llzk/Dialect/LLZK/Util/ErrorHelper.h"
-#include "llzk/Dialect/LLZK/Util/SymbolLookup.h" // IWYU pragma: keep
+#include "llzk/Dialect/LLZK/Util/SymbolLookup.h"
 
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinTypes.h>
@@ -157,11 +158,18 @@ template <> struct DenseMapInfo<llzk::Side> {
 
 namespace llzk {
 
+inline bool isDynamic(mlir::IntegerAttr intAttr) {
+  return mlir::ShapedType::isDynamic(fromAPInt(intAttr.getValue()));
+}
+
 /// Optional result from type unifications. Maps `SymbolRefAttr` appearing in one type to the
 /// associated `Attribute` from the other type at the same nested position. The `Side` enum in the
 /// key indicates which input expression the `SymbolRefAttr` is from. Additionally, if a conflict is
 /// found (i.e. multiple occurances of a specific `SymbolRefAttr` on the same side map to different
 /// Attributes from the other side). The mapped value will be `nullptr`.
+///
+/// This map is used by the `llzk-flatten` pass to replace struct parameter `SymbolRefAttr` with
+/// static concrete values to produce the flattened versions of structs.
 using UnificationMap = mlir::DenseMap<std::pair<mlir::SymbolRefAttr, Side>, mlir::Attribute>;
 
 /// Return `true` iff the two ArrayRef instances containing StructType or ArrayType parameters
