@@ -7,35 +7,30 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llzk/Dialect/LLZK/Analysis/CallGraphAnalyses.h"
-#include "llzk/Dialect/LLZK/IR/Builders.h"
-#include "llzk/Dialect/LLZK/IR/Ops.h"
-#include "llzk/Dialect/LLZK/Util/SymbolHelper.h"
-
-#include <mlir/IR/BuiltinOps.h>
-#include <mlir/Pass/PassManager.h>
+#include "llzk/Analysis/CallGraphAnalyses.h"
+#include "llzk/Dialect/Shared/Builders.h"
+#include "llzk/Util/SymbolHelper.h"
 
 #include <gtest/gtest.h>
 
+#include "../LLZKTestBase.h"
+
 using namespace llzk;
 
-class CallGraphTests : public ::testing::Test {
+class CallGraphTests : public LLZKTest {
 protected:
   static constexpr auto structAName = "structA";
   static constexpr auto structBName = "structB";
   static constexpr auto structCName = "structC";
 
-  mlir::MLIRContext context;
   mlir::OwningOpRef<mlir::ModuleOp> mod;
   ModuleBuilder builder;
 
-  CallGraphTests() : context(), mod(createLLZKModule(&context)), builder(mod.get()) {
-    context.loadDialect<llzk::LLZKDialect>();
-  }
+  CallGraphTests() : LLZKTest(), mod(createLLZKModule(&ctx)), builder(mod.get()) {}
 
   void SetUp() override {
     // Create a new module and builder for each test.
-    mod = createLLZKModule(&context);
+    mod = createLLZKModule(&ctx);
     builder = ModuleBuilder(mod.get());
   }
 };
@@ -153,7 +148,7 @@ TEST_F(CallGraphTests, lookupInSymbolFQNTest) {
 
   // But we can find B::@compute in B with the symbol helpers
   mlir::SymbolTableCollection tables;
-  auto res = llzk::lookupTopLevelSymbol<llzk::FuncOp>(
+  auto res = llzk::lookupTopLevelSymbol<llzk::function::FuncDefOp>(
       tables, computeFn->getFullyQualifiedName(), computeFn->getOperation()
   );
   ASSERT_EQ(*computeFn, res.value().get());

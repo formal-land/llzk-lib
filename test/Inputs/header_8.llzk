@@ -1,0 +1,15 @@
+// Imported via `include_pass.llzk`
+
+module attributes {veridise.lang = "llzk"} {
+  module @libC {
+    struct.def @StructC {
+      function.def @compute() -> !struct.type<@libC::@StructC> {
+        %self = struct.new : !struct.type<@libC::@StructC>
+        function.return %self : !struct.type<@libC::@StructC>
+      }
+      function.def @constrain(%self: !struct.type<@libC::@StructC>) {
+        function.return
+      }
+    }
+  }
+}

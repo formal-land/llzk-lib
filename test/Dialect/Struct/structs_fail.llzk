@@ -1,0 +1,375 @@
+// RUN: llzk-opt -split-input-file -verify-diagnostics %s
+
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentD<[@B, @D, @C]> {
+    // expected-error@+1 {{'struct.def' op expects parent op 'builtin.module'}}
+    struct.def @ComponentA {}
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  function.def @identity(%x: !felt.type) -> !felt.type {
+    // expected-error@+1 {{'struct.def' op expects parent op 'builtin.module'}}
+    struct.def @ComponentA {}
+    function.return %x: !felt.type
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentB<[@B, @D, @C]> {
+    // expected-error@+1 {{'struct.def' op must define only "@compute" and "@constrain" functions; found "@invalidname"}}
+    function.def @invalidname(%a: !felt.type, %b: !felt.type) {
+      function.return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentE<[@B, @D, @C]> {
+    // expected-note@+1 {{see existing symbol definition here}}
+    function.def @compute(%a: !felt.type, %b: !felt.type) -> !struct.type<@ComponentE<[@B, @D, @C]>> {
+      %self = struct.new : !struct.type<@ComponentE<[@B, @D, @C]>>
+      function.return %self : !struct.type<@ComponentE<[@B, @D, @C]>>
+    }
+    // expected-error@+1 {{redefinition of symbol named 'compute'}}
+    function.def @compute() -> !struct.type<@ComponentE<[@B, @D, @C]>> {
+      %self = struct.new : !struct.type<@ComponentE<[@B, @D, @C]>>
+      function.return %self : !struct.type<@ComponentE<[@B, @D, @C]>>
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  // expected-error@+1 {{'struct.def' op must define exactly one 'constrain' function}}
+  struct.def @ComponentF<[@B, @D, @C]> {
+    function.def @compute(%a: !felt.type, %b: !felt.type) -> !struct.type<@ComponentF<[@B, @D, @C]>> {
+      %self = struct.new : !struct.type<@ComponentF<[@B, @D, @C]>>
+      function.return %self : !struct.type<@ComponentF<[@B, @D, @C]>>
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentG<[@B, @D, @C]> {
+    function.def @compute() -> !struct.type<@ComponentG<[@B, @D, @C]>> {
+      %self = struct.new : !struct.type<@ComponentG<[@B, @D, @C]>>
+      function.return %self : !struct.type<@ComponentG<[@B, @D, @C]>>
+    }
+    // expected-error@+1 {{'builtin.module' op invalid operation in 'struct.def'; only 'struct.field' and 'function.def' operations are permitted}}
+    builtin.module {
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentH {
+    struct.field @f2 : !felt.type // expected-note {{see existing symbol definition here}}
+    // expected-error@+1 {{redefinition of symbol named 'f2'}}
+    struct.field @f2 : !felt.type
+
+    function.def @compute() -> !struct.type<@ComponentH> {
+      %self = struct.new : !struct.type<@ComponentH>
+      function.return %self : !struct.type<@ComponentH>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentH>)  { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentJ {
+    function.def @compute() -> !struct.type<@ComponentJ> {
+      %self = struct.new : !struct.type<@ComponentJ>
+      function.return %self : !struct.type<@ComponentJ>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentJ>)  { function.return }
+  }
+
+  function.def @user() {
+    // expected-error@+2 {{symbol "@ComponentJ" references a 'struct.def' but expected a 'function.def'}}
+    // expected-error@+1 {{expected 'function.def' named "@ComponentJ"}}
+    function.call @ComponentJ() : () -> ()
+    function.return
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentK {
+    // expected-error@+2 {{'struct.field' op references unknown symbol "@Missing"}}
+    // expected-error@+1 {{could not find 'struct.def' named "@Missing"}}
+    struct.field @f : !struct.type<@Missing>
+
+    function.def @compute() -> !struct.type<@ComponentK> {
+      %self = struct.new : !struct.type<@ComponentK>
+      function.return %self : !struct.type<@ComponentK>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentK>)  { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentL {
+    // expected-error@+2 {{'struct.field' op references unknown symbol "@Missing"}}
+    // expected-error@+1 {{could not find 'struct.def' named "@Missing"}}
+    struct.field @f : !array.type<2,3,2 x !struct.type<@Missing>>
+
+    function.def @compute() -> !struct.type<@ComponentL> {
+      %self = struct.new : !struct.type<@ComponentL>
+      function.return %self : !struct.type<@ComponentL>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentL>)  { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  module @path{}
+  struct.def @ComponentM {
+    // expected-error@+2 {{'struct.field' op references unknown symbol "@path::@to::@Missing"}}
+    // expected-error@+1 {{could not find 'struct.def' named "@path::@to::@Missing"}}
+    struct.field @f : !array.type<2,3,2 x !struct.type<@path::@to::@Missing>>
+
+    function.def @compute() -> !struct.type<@ComponentM> {
+      %self = struct.new : !struct.type<@ComponentM>
+      function.return %self : !struct.type<@ComponentM>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentM>)  { function.return }
+  }
+}
+
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentP {
+    // expected-error@+2 {{'function.def' op references unknown symbol "@X"}}
+    // expected-error@+1 {{could not find 'struct.def' named "@X"}}
+    function.def @compute(%0: i1, %1: i1, %2: i1, %3: i1, %4: i1, %5: i1, %6: i1, %7: !struct.type<@X>) -> !struct.type<@ComponentP> {
+      %self = struct.new : !struct.type<@ComponentP>
+      function.return %self : !struct.type<@ComponentP>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentP>)  { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentQ {
+    function.def @compute() -> !struct.type<@ComponentQ> {
+      %self = struct.new : !struct.type<@ComponentQ>
+      function.return %self : !struct.type<@ComponentQ>
+    }
+    // expected-error@+2 {{'function.def' op references unknown symbol "@X"}}
+    // expected-error@+1 {{could not find 'struct.def' named "@X"}}
+    function.def @constrain(%self: !struct.type<@ComponentQ>, %0: i1, %1: i1, %2: i1, %3: i1, %4: i1, %5: i1, %6: i1, %7: !struct.type<@X>)  { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentR {
+    // expected-error@+4 {{'function.def' op references unknown symbol "@A"}}
+    // expected-error@+3 {{could not find 'struct.def' named "@A"}}
+    // expected-error@+2 {{'function.def' op references unknown symbol "@B"}}
+    // expected-error@+1 {{could not find 'struct.def' named "@B"}}
+    function.def @compute(%1: !struct.type<@A>, %7: !struct.type<@B>) -> !struct.type<@ComponentR> {
+      %self = struct.new : !struct.type<@ComponentR>
+      function.return %self : !struct.type<@ComponentR>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentR>, %1: !struct.type<@A>, %7: !struct.type<@B>)  { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentS {
+    // expected-error@+4 {{'function.def' op references unknown symbol "@A"}}
+    // expected-error@+3 {{could not find 'struct.def' named "@A"}}
+    // expected-error@+2 {{'function.def' op references unknown symbol "@B"}}
+    // expected-error@+1 {{could not find 'struct.def' named "@B"}}
+    function.def @constrain(%self: !struct.type<@ComponentS>, %1: !struct.type<@A>, %7: !struct.type<@B>)  { function.return }
+    function.def @compute(%1: !struct.type<@A>, %7: !struct.type<@B>) -> !struct.type<@ComponentS> {
+      %self = struct.new : !struct.type<@ComponentS>
+      function.return %self : !struct.type<@ComponentS>
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentT { // expected-note {{references parent component defined here}}
+    // expected-error@+1 {{'struct.field' op type is circular}}
+    struct.field @f : !struct.type<@ComponentT>
+
+    function.def @compute() -> !struct.type<@ComponentT> {
+      %self = struct.new : !struct.type<@ComponentT>
+      function.return %self : !struct.type<@ComponentT>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentT>)  { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  module @a {
+    struct.def @ComponentV { // expected-note {{references parent component defined here}}
+      // expected-error@+1 {{'struct.field' op type is circular}}
+      struct.field @f : !struct.type<@a::@ComponentV>
+
+      function.def @compute() -> !struct.type<@a::@ComponentV> {
+        %self = struct.new : !struct.type<@a::@ComponentV>
+        function.return %self : !struct.type<@a::@ComponentV>
+      }
+      function.def @constrain(%self: !struct.type<@a::@ComponentV>)  { function.return }
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  // expected-error@+1 {{'struct.new' op only valid within a 'function.def' with 'function.allow_witness' attribute}}
+  %0 = struct.new : !struct.type<@SomeComponent>
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentW {
+    // expected-error@+1 {{'struct.new' op only valid within a 'function.def' with 'function.allow_witness' attribute}}
+    struct.new : !struct.type<@ComponentW>
+
+    function.def @compute() -> !struct.type<@ComponentW> {
+      %self = struct.new : !struct.type<@ComponentW>
+      function.return %self : !struct.type<@ComponentW>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentW>)  { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @WrongComponent { // expected-note {{uses this type instead}}
+    function.def @compute() -> !struct.type<@WrongComponent> {
+      %self = struct.new : !struct.type<@WrongComponent>
+      function.return %self : !struct.type<@WrongComponent>
+    }
+    function.def @constrain(%self: !struct.type<@WrongComponent>)  { function.return }
+  }
+
+  struct.def @ComponentX {
+    function.def @compute() -> !struct.type<@ComponentX> {
+      %self = struct.new : !struct.type<@ComponentX>
+      // expected-error@+1 {{'struct.new' op must use type of its ancestor 'struct.def' "@ComponentX" as result type}}
+      %invalid = struct.new : !struct.type<@WrongComponent>
+      function.return %self : !struct.type<@ComponentX>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentX>)  { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentY {
+    function.def @compute() -> !struct.type<@ComponentY> {
+      %self = struct.new : !struct.type<@ComponentY>
+      function.return %self : !struct.type<@ComponentY>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentY>)  {
+      // expected-error@+1 {{'struct.new' op only valid within a 'function.def' with 'function.allow_witness' attribute}}
+      %0 = struct.new : !struct.type<@ComponentY>
+      function.return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @ComponentZ {
+    function.def @compute() -> !struct.type<@ComponentZ> {
+      %self = struct.new : !struct.type<@ComponentZ>
+      function.return %self : !struct.type<@ComponentZ>
+    }
+    function.def @constrain(%self: !struct.type<@ComponentZ>)  {
+      function.return
+    }
+    // expected-error@+1 {{'struct.def' op must define only "@compute" and "@constrain" functions; found "@extra"}}
+    function.def @extra() { function.return }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @Main {
+    // expected-error@+1 {{"@Main" component "@compute" function parameters must be one of: {!struct.type<@Signal>, !array.type<.. x !struct.type<@Signal>>}}}
+    function.def @compute(%0: i1) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      function.return %self : !struct.type<@Main>
+    }
+    function.def @constrain(%self: !struct.type<@Main>)  {
+      function.return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @Main {
+    function.def @compute() -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      function.return %self : !struct.type<@Main>
+    }
+    // expected-error@+1 {{"@Main" component "@constrain" function parameters must be one of: {!struct.type<@Main>, !struct.type<@Signal>, !array.type<.. x !struct.type<@Signal>>}}}
+    function.def @constrain(%self: !struct.type<@Main>, %0: i1)  {
+      function.return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  // expected-error@+1 {{The "@Main" component must have no parameters}}
+  struct.def @Main<[@T]> {
+    function.def @compute() -> !struct.type<@Main<[@T]>> {
+      %self = struct.new : !struct.type<@Main<[@T]>>
+      function.return %self : !struct.type<@Main<[@T]>>
+    }
+    function.def @constrain(%self: !struct.type<@Main<[@T]>>)  {
+      function.return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @Signal {
+    struct.field @reg : !felt.type {llzk.pub}
+
+    function.def @compute(%v: !felt.type) -> !struct.type<@Signal> {
+      %self = struct.new : !struct.type<@Signal>
+      struct.writef %self[@reg] = %v : !struct.type<@Signal>, !felt.type
+      function.return %self : !struct.type<@Signal>
+    }
+
+    function.def @constrain(%self: !struct.type<@Signal>, %v: !felt.type) {
+      function.return
+    }
+  }
+  struct.def @Main {
+    function.def @compute(%0: !struct.type<@Signal>) -> !struct.type<@Main> { // expected-note {{"@compute" function defined here}}
+      %self = struct.new : !struct.type<@Main>
+      function.return %self : !struct.type<@Main>
+    }
+    // expected-error@+1 {{expected "@constrain" function argument types (sans the first one) to match "@compute" function argument types}}
+    function.def @constrain(%self: !struct.type<@Main>, %0: !struct.type<@Signal>, %1: !struct.type<@Signal>)  {
+      function.return
+    }
+  }
+}
+// -----
+module attributes {veridise.lang = "llzk"} {
+  struct.def @Signal {
+    struct.field @reg : !felt.type {llzk.pub}
+
+    function.def @compute(%v: !felt.type) -> !struct.type<@Signal> {
+      %self = struct.new : !struct.type<@Signal>
+      struct.writef %self[@reg] = %v : !struct.type<@Signal>, !felt.type
+      function.return %self : !struct.type<@Signal>
+    }
+
+    function.def @constrain(%self: !struct.type<@Signal>, %v: !felt.type) {
+      function.return
+    }
+  }
+  struct.def @Main {
+    function.def @compute(%0: !struct.type<@Signal>) -> !struct.type<@Main> { // expected-note {{"@compute" function defined here}}
+      %self = struct.new : !struct.type<@Main>
+      function.return %self : !struct.type<@Main>
+    }
+    // expected-error@+1 {{expected "@constrain" function argument types (sans the first one) to match "@compute" function argument types}}
+    function.def @constrain(%self: !struct.type<@Main>, %0: !array.type<4 x !struct.type<@Signal>>)  {
+      function.return
+    }
+  }
+}
+

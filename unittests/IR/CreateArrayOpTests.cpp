@@ -7,13 +7,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llzk/Dialect/LLZK/IR/Builders.h"
-#include "llzk/Dialect/LLZK/IR/Ops.h"
+#include "llzk/Dialect/Array/IR/Ops.h"
+#include "llzk/Dialect/Felt/IR/Attrs.h"
+#include "llzk/Dialect/Felt/IR/Ops.h"
+#include "llzk/Dialect/Shared/Builders.h"
+
+#include <mlir/Dialect/Arith/IR/Arith.h>
 
 #include "OpTestBase.h"
 
-using namespace llzk;
 using namespace mlir;
+using namespace llzk;
+using namespace llzk::array;
+using namespace llzk::felt;
 
 //===------------------------------------------------------------------===//
 // CreateArrayOp::build(..., ArrayType, ValueRange)
@@ -21,14 +27,14 @@ using namespace mlir;
 
 TEST_F(OpTests, testElementInit_GoodEmpty) {
   OpBuilder bldr(mod->getRegion());
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {2, 2}); // !llzk.array<2,2 x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {2, 2}); // !array.type<2,2 x index>
   CreateArrayOp op = bldr.create<CreateArrayOp>(loc, arrTy);
   ASSERT_TRUE(verify(op));
 }
 
 TEST_F(OpTests, testElementInit_GoodNonEmpty) {
   OpBuilder bldr(mod->getRegion());
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {2}); // !llzk.array<2 x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {2}); // !array.type<2 x index>
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 766);
   auto v2 = bldr.create<arith::ConstantIndexOp>(loc, 562);
   CreateArrayOp op = bldr.create<CreateArrayOp>(loc, arrTy, ValueRange {v1, v2});
@@ -37,36 +43,36 @@ TEST_F(OpTests, testElementInit_GoodNonEmpty) {
 
 TEST_F(OpTests, testElementInit_TooFew) {
   OpBuilder bldr(mod->getRegion());
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {5}); // !llzk.array<5 x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {5}); // !array.type<5 x index>
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 766);
   auto v2 = bldr.create<arith::ConstantIndexOp>(loc, 562);
   CreateArrayOp op = bldr.create<CreateArrayOp>(loc, arrTy, ValueRange {v1, v2});
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op failed to verify that operand types match result type"
+      "error: 'array.new' op failed to verify that operand types match result type"
   );
 }
 
 TEST_F(OpTests, testElementInit_TooMany) {
   OpBuilder bldr(mod->getRegion());
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {1}); // !llzk.array<1 x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {1}); // !array.type<1 x index>
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 766);
   auto v2 = bldr.create<arith::ConstantIndexOp>(loc, 562);
   CreateArrayOp op = bldr.create<CreateArrayOp>(loc, arrTy, ValueRange {v1, v2});
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op failed to verify that operand types match result type"
+      "error: 'array.new' op failed to verify that operand types match result type"
   );
 }
 
 TEST_F(OpTests, testElementInit_WithAffineMapType) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !llzk.array<#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !array.type<#m x index>
   CreateArrayOp op = bldr.create<CreateArrayOp>(loc, arrTy);
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op map instantiation group count \\(0\\) does not match the number "
+      "error: 'array.new' op map instantiation group count \\(0\\) does not match the number "
       "of affine map instantiations \\(1\\) required by the type"
   );
 }
@@ -78,7 +84,7 @@ TEST_F(OpTests, testElementInit_WithAffineMapType) {
 TEST_F(OpTests, testMapOpInit_Good) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m, m});  // !llzk.array<#m,#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m, m});  // !array.type<#m,#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   auto v2 = bldr.create<arith::ConstantIndexOp>(loc, 98);
@@ -91,14 +97,14 @@ TEST_F(OpTests, testMapOpInit_Good) {
 TEST_F(OpTests, testMapOpInit_Op1_Dim1_Type2) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m, m});  // !llzk.array<#m,#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m, m});  // !array.type<#m,#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   CreateArrayOp op =
       bldr.create<CreateArrayOp>(loc, arrTy, ArrayRef {ValueRange {v1}}, ArrayRef<int32_t> {1});
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op map instantiation group count \\(1\\) does not match the number "
+      "error: 'array.new' op map instantiation group count \\(1\\) does not match the number "
       "of affine map instantiations \\(2\\) required by the type"
   );
 }
@@ -106,14 +112,14 @@ TEST_F(OpTests, testMapOpInit_Op1_Dim1_Type2) {
 TEST_F(OpTests, testMapOpInit_Op1_Dim2_Type2) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m, m});  // !llzk.array<#m,#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m, m});  // !array.type<#m,#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   CreateArrayOp op =
       bldr.create<CreateArrayOp>(loc, arrTy, ArrayRef {ValueRange {v1}}, ArrayRef<int32_t> {1, 0});
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op map instantiation group count \\(1\\) does not match with length "
+      "error: 'array.new' op map instantiation group count \\(1\\) does not match with length "
       "of 'mapOpGroupSizes' attribute \\(2\\)"
   );
 }
@@ -121,7 +127,7 @@ TEST_F(OpTests, testMapOpInit_Op1_Dim2_Type2) {
 TEST_F(OpTests, testMapOpInit_Op2_Dim1_Type2) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m, m});  // !llzk.array<#m,#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m, m});  // !array.type<#m,#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   auto v2 = bldr.create<arith::ConstantIndexOp>(loc, 98);
@@ -130,7 +136,7 @@ TEST_F(OpTests, testMapOpInit_Op2_Dim1_Type2) {
   );
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op map instantiation group count \\(2\\) does not match with length "
+      "error: 'array.new' op map instantiation group count \\(2\\) does not match with length "
       "of 'mapOpGroupSizes' attribute \\(1\\)"
   );
 }
@@ -138,7 +144,7 @@ TEST_F(OpTests, testMapOpInit_Op2_Dim1_Type2) {
 TEST_F(OpTests, testMapOpInit_Op3_Dim3_Type1) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !llzk.array<#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !array.type<#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   auto v2 = bldr.create<arith::ConstantIndexOp>(loc, 98);
@@ -149,7 +155,7 @@ TEST_F(OpTests, testMapOpInit_Op3_Dim3_Type1) {
   );
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op map instantiation group count \\(3\\) does not match the number "
+      "error: 'array.new' op map instantiation group count \\(3\\) does not match the number "
       "of affine map instantiations \\(1\\) required by the type"
   );
 }
@@ -157,7 +163,7 @@ TEST_F(OpTests, testMapOpInit_Op3_Dim3_Type1) {
 TEST_F(OpTests, testMapOpInit_Op3_Dim2_Type1) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !llzk.array<#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !array.type<#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   auto v2 = bldr.create<arith::ConstantIndexOp>(loc, 98);
@@ -168,7 +174,7 @@ TEST_F(OpTests, testMapOpInit_Op3_Dim2_Type1) {
   );
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op map instantiation group count \\(3\\) does not match with length "
+      "error: 'array.new' op map instantiation group count \\(3\\) does not match with length "
       "of 'mapOpGroupSizes' attribute \\(2\\)"
   );
 }
@@ -176,7 +182,7 @@ TEST_F(OpTests, testMapOpInit_Op3_Dim2_Type1) {
 TEST_F(OpTests, testMapOpInit_Op2_Dim3_Type1) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !llzk.array<#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !array.type<#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   auto v2 = bldr.create<arith::ConstantIndexOp>(loc, 98);
@@ -185,7 +191,7 @@ TEST_F(OpTests, testMapOpInit_Op2_Dim3_Type1) {
   );
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op map instantiation group count \\(2\\) does not match with length "
+      "error: 'array.new' op map instantiation group count \\(2\\) does not match with length "
       "of 'mapOpGroupSizes' attribute \\(3\\)"
   );
 }
@@ -193,14 +199,14 @@ TEST_F(OpTests, testMapOpInit_Op2_Dim3_Type1) {
 TEST_F(OpTests, testMapOpInit_NumDimsTooHigh) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !llzk.array<#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !array.type<#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   CreateArrayOp op =
       bldr.create<CreateArrayOp>(loc, arrTy, ArrayRef {ValueRange {v1}}, ArrayRef<int32_t> {9});
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op instantiation of map 0 expected 1 but found 9 dimension values "
+      "error: 'array.new' op instantiation of map 0 expected 1 but found 9 dimension values "
       "in \\(\\)"
   );
 }
@@ -208,7 +214,7 @@ TEST_F(OpTests, testMapOpInit_NumDimsTooHigh) {
 TEST_F(OpTests, testMapOpInit_TooManyOpsForMap) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !llzk.array<#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !array.type<#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   auto v2 = bldr.create<arith::ConstantIndexOp>(loc, 23);
@@ -216,7 +222,7 @@ TEST_F(OpTests, testMapOpInit_TooManyOpsForMap) {
       bldr.create<CreateArrayOp>(loc, arrTy, ArrayRef {ValueRange {v1, v2}}, ArrayRef<int32_t> {1});
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op instantiation of map 0 expected 0 but found 1 symbol values in "
+      "error: 'array.new' op instantiation of map 0 expected 0 but found 1 symbol values in "
       "\\[\\]"
   );
 }
@@ -227,14 +233,14 @@ TEST_F(OpTests, testMapOpInit_TooFewOpsForMap) {
   AffineMapAttr m = AffineMapAttr::get(AffineMap::get(
       /*dimCount=*/2, /*symbolCount=*/0, bldr.getAffineDimExpr(0) + bldr.getAffineDimExpr(1)
   ));
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m}); // !llzk.array<#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m}); // !array.type<#m x index>
 
   auto v1 = bldr.create<arith::ConstantIndexOp>(loc, 10);
   CreateArrayOp op =
       bldr.create<CreateArrayOp>(loc, arrTy, ArrayRef {ValueRange {v1}}, ArrayRef<int32_t> {1});
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op instantiation of map 0 expected 2 but found 1 dimension values "
+      "error: 'array.new' op instantiation of map 0 expected 2 but found 1 dimension values "
       "in \\(\\)"
   );
 }
@@ -242,7 +248,7 @@ TEST_F(OpTests, testMapOpInit_TooFewOpsForMap) {
 TEST_F(OpTests, testMapOpInit_WrongTypeForMapOperands) {
   OpBuilder bldr(mod->getRegion());
   AffineMapAttr m = AffineMapAttr::get(bldr.getDimIdentityMap()); // (d0) -> (d0)
-  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !llzk.array<#m x index>
+  ArrayType arrTy = ArrayType::get(bldr.getIndexType(), {m});     // !array.type<#m x index>
 
   FeltConstAttr a = bldr.getAttr<FeltConstAttr>(APInt::getZero(64));
   auto v1 = bldr.create<FeltConstantOp>(loc, a);
@@ -250,6 +256,6 @@ TEST_F(OpTests, testMapOpInit_WrongTypeForMapOperands) {
       bldr.create<CreateArrayOp>(loc, arrTy, ArrayRef {ValueRange {v1}}, ArrayRef<int32_t> {1});
   EXPECT_DEATH(
       { assert(verify(op)); },
-      "error: 'llzk.new_array' op operand #0 must be variadic of index, but got '!llzk.felt'"
+      "error: 'array.new' op operand #0 must be variadic of index, but got '!felt.type'"
   );
 }

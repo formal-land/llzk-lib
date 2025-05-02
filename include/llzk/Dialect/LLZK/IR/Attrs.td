@@ -11,64 +11,31 @@
 #define LLZK_ATTRS
 
 include "llzk/Dialect/LLZK/IR/Dialect.td"
-include "llzk/Dialect/LLZK/IR/Enums.td"
+include "llzk/Dialect/LLZK/IR/AttributeHelper.td"
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/IR/EnumAttr.td"
 
-// APInts that allows comparison involving different bitwidths.
-class APIntParameter<string desc = "">
-    : AttrOrTypeParameter<"::llvm::APInt", desc> {
-  let comparator = "::llvm::APInt::isSameValue($_lhs, $_rhs)";
-}
-
-class LLZK_Attr<string name, string attrMnemonic, list<Trait> traits = []>
+class LLZKDialectAttr<string name, string attrMnemonic, list<Trait> traits = []>
     : AttrDef<LLZKDialect, name, traits> {
   let mnemonic = attrMnemonic;
 }
 
-class LLZK_EnumAttr<EnumAttrInfo enum, string name, string enumMnemonic,
-                    list<Trait> traits = []>
-    : EnumAttr<LLZKDialect, enum, name, traits> {
-  let mnemonic = enumMnemonic;
-}
-
-def LLZK_CmpPredicateAttr
-    : LLZK_EnumAttr<LLZK_FeltCmpPredicate, "cmp_predicate", "cmp"> {
-  let assemblyFormat = [{ $value }];
-}
-
-def LLZK_FeltConstAttr
-    : LLZK_Attr<"FeltConst", "constfelt", [TypedAttrInterface]> {
-  let summary = "finite field element";
-  let description = [{
-    A felt attribute represents a finite field element.
-  }];
-
-  let parameters = (ins APIntParameter<"The felt constant value">:$value);
-
-  let assemblyFormat = [{ $value }];
-
-  let extraClassDeclaration = [{
-    ::mlir::Type getType() const;
-  }];
-}
-
-def LLZK_PubModifierAttr : LLZK_Attr<"Public", "pub"> {
+def LLZK_PublicAttr : LLZKDialectAttr<"Public", "pub"> {
   let summary = "A unit attribute to mark a type as public";
   let description = [{
     Examples:
 
     ```llzk
-    llzk.field @field_name : !llzk.felt {llzk.pub}
+    struct.field @field_name : !felt.type {llzk.pub}
 
-    llzk.func @func_name(%0: !llzk.felt {llzk.pub})
+    function.def @func_name(%0: !felt.type {llzk.pub})
     ```
   }];
 }
 
-def LLZK_LoopBounds : LLZK_Attr<"LoopBounds", "loopbounds"> {
+def LLZK_LoopBoundsAttr : LLZKDialectAttr<"LoopBounds", "loopbounds"> {
   let summary = "Annotation with the bounds of a loop";
   let description = [{
     This attribute holds information useful for the analysis of loops.

@@ -7,24 +7,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llzk/Dialect/LLZK/IR/Builders.h"
+#include "llzk/Dialect/Array/Util/ArrayTypeHelper.h"
 #include "llzk/Dialect/LLZK/IR/Dialect.h"
-#include "llzk/Dialect/LLZK/Util/ArrayTypeHelper.h"
-#include "llzk/Dialect/LLZK/Util/Debug.h"
+#include "llzk/Dialect/Shared/Builders.h"
+#include "llzk/Util/Debug.h"
 
 #include <gtest/gtest.h>
 
+#include "../LLZKTestBase.h"
+
 using namespace llzk;
+using namespace llzk::array;
 using namespace mlir;
 
-class ArrayTypeHelperTests : public ::testing::Test {
+class ArrayTypeHelperTests : public LLZKTest {
 protected:
-  MLIRContext ctx;
-  Location loc;
-
-  ArrayTypeHelperTests() : ctx(), loc(llzk::getUnknownLoc(&ctx)) {
-    ctx.loadDialect<llzk::LLZKDialect>();
-  }
+  ArrayTypeHelperTests() : LLZKTest() {}
 };
 
 TEST_F(ArrayTypeHelperTests, test_delinearize_too_small) {

@@ -7,9 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llzk/Dialect/LLZK/IR/Builders.h"
-#include "llzk/Dialect/LLZK/Util/Debug.h"
-#include "llzk/Dialect/LLZK/Util/SymbolHelper.h"
+#include "llzk/Dialect/Shared/Builders.h"
+#include "llzk/Util/Debug.h"
+#include "llzk/Util/SymbolHelper.h"
 
 #include <mlir/IR/BuiltinAttributes.h>
 
@@ -23,7 +23,7 @@ protected:
   MLIRContext ctx;
   Location loc;
 
-  SymbolHelperTests() : ctx(), loc(llzk::getUnknownLoc(&ctx)) {}
+  SymbolHelperTests() : ctx(), loc(getUnknownLoc(&ctx)) {}
 
   SymbolRefAttr newExample(unsigned numNestedRefs = 0) {
     llvm::SmallVector<FlatSymbolRefAttr> nestedRefs;

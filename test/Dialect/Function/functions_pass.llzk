@@ -1,0 +1,51 @@
+// RUN: llzk-opt -split-input-file %s 2>&1 | FileCheck --enable-var-scope %s
+
+function.def private @abort()
+//CHECK-LABEL:  function.def private @abort()
+// -----
+
+function.def private @scribble(!felt.type, !felt.type)
+//CHECK-LABEL:  function.def private @scribble(!felt.type, !felt.type)
+// -----
+
+function.def @identity(%x: !felt.type) -> !felt.type {
+  function.return %x: !felt.type
+}
+//CHECK-LABEL:  function.def @identity(%arg0: !felt.type) -> !felt.type {
+//CHECK-NEXT:     function.return %arg0 : !felt.type
+//CHECK-NEXT:   }
+// -----
+
+module attributes {veridise.lang = "llzk"} {
+  function.def @split(%x: index) -> (index, index) {
+    %0 = arith.constant 1 : index
+    function.return %x, %0 : index, index
+  }
+  function.def @user(%x: index) -> (index, index) {
+    %1, %2 = function.call @split(%x) : (index) -> (index, index)
+    function.return %1, %2 : index, index
+  }
+}
+//CHECK-LABEL:  function.def @split(%arg0: index) -> (index, index) {
+//CHECK-NEXT:     %[[T1:[0-9a-zA-Z_\.]+]] = arith.constant 1 : index
+//CHECK-NEXT:     function.return %arg0, %[[T1]] : index, index
+//CHECK-NEXT:   }
+//CHECK-LABEL:  function.def @user(%arg0: index) -> (index, index) {
+//CHECK-NEXT:     %[[T1:[0-9a-zA-Z_\.]+]]:2 = function.call @split(%arg0) : (index) -> (index, index)
+//CHECK-NEXT:     function.return %[[T1]]#0, %[[T1]]#1 : index, index
+//CHECK-NEXT:   }
+// -----
+
+function.def private @example_arg_attr1(%x: i1 {llzk.pub}, %y: i1)
+//CHECK-LABEL:  function.def private @example_arg_attr1(i1 {llzk.pub}, i1)
+// -----
+
+function.def private @example_arg_attr2(
+    %a: !felt.type {llzk.pub},
+    %b: index {llzk.pub}) {
+  function.return
+}
+//CHECK-LABEL:  function.def private @example_arg_attr2(%arg0: !felt.type {llzk.pub}, %arg1: index {llzk.pub}) {
+//CHECK-NEXT:     function.return
+//CHECK-NEXT:   }
+// -----

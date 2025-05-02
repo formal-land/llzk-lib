@@ -1,0 +1,48 @@
+// RUN: llzk-opt -split-input-file %s 2>&1 | FileCheck --enable-var-scope %s
+
+module attributes {veridise.lang = "llzk"} {
+  struct.def @Hello {
+    function.def @compute() -> !struct.type<@Hello> {
+      %self = struct.new : !struct.type<@Hello>
+      function.return %self : !struct.type<@Hello>
+    }
+    function.def @constrain(%self: !struct.type<@Hello>) { function.return }
+  }
+  function.def private @a(!array.type<5 x !felt.type>, !struct.type<@Hello>)
+}
+//CHECK-LABEL:  function.def private @a(!array.type<5 x !felt.type>, !struct.type<@Hello>)
+// -----
+
+module attributes {veridise.lang = "llzk"} {
+  struct.def @Bob {
+    function.def @compute() -> !struct.type<@Bob> {
+      %self = struct.new : !struct.type<@Bob>
+      function.return %self : !struct.type<@Bob>
+    }
+    function.def @constrain(%self: !struct.type<@Bob>) { function.return }
+  }
+  function.def private @c(%x: !array.type<5 x !struct.type<@Bob>>) -> !array.type<5 x !struct.type<@Bob>>
+}
+//CHECK-LABEL:  function.def private @c(!array.type<5 x !struct.type<@Bob>>) -> !array.type<5 x !struct.type<@Bob>>
+// -----
+
+module attributes {veridise.lang = "llzk"} {
+  struct.def @CJ {
+    struct.field @s : !string.type
+    function.def @compute() -> !struct.type<@CJ> {
+      %self = struct.new : !struct.type<@CJ>
+      function.return %self : !struct.type<@CJ>
+    }
+    function.def @constrain(%self: !struct.type<@CJ>) { function.return }
+  }
+}
+//CHECK-LABEL: struct.def @CJ {
+//CHECK-NEXT:    struct.field @s : !string.type
+//CHECK-NEXT:    function.def @compute() -> !struct.type<@CJ> attributes {function.allow_witness} {
+//CHECK-NEXT:      %[[SELF:[0-9a-zA-Z_\.]+]] = struct.new : <@CJ>
+//CHECK-NEXT:      function.return %[[SELF]] : !struct.type<@CJ>
+//CHECK-NEXT:    }
+//CHECK-NEXT:    function.def @constrain(%[[SELF:[0-9a-zA-Z_\.]+]]: !struct.type<@CJ>) attributes {function.allow_constraint} {
+//CHECK-NEXT:      function.return
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }

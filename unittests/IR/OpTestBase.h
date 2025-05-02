@@ -9,23 +9,23 @@
 
 #pragma once
 
-#include "llzk/Dialect/LLZK/IR/Builders.h"
-#include "llzk/Dialect/LLZK/IR/Ops.h"
+#include "llzk/Dialect/Array/IR/Ops.h"
+#include "llzk/Dialect/Shared/Builders.h"
 
 #include <gtest/gtest.h>
 
-class OpTests : public ::testing::Test {
+#include "../LLZKTestBase.h"
+
+class OpTests : public LLZKTest {
 protected:
   static constexpr auto funcNameA = "FuncA";
   static constexpr auto funcNameB = "FuncB";
   static constexpr auto structNameA = "StructA";
   static constexpr auto structNameB = "StructB";
 
-  mlir::MLIRContext ctx;
-  mlir::Location loc;
   mlir::OwningOpRef<mlir::ModuleOp> mod;
 
-  OpTests() : ctx(), loc(llzk::getUnknownLoc(&ctx)), mod() { ctx.loadDialect<llzk::LLZKDialect>(); }
+  OpTests() : LLZKTest(), mod() {}
 
   void SetUp() override {
     // Create a new module for each test

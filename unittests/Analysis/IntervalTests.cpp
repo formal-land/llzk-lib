@@ -1,5 +1,14 @@
-#include "llzk/Dialect/LLZK/Analysis/IntervalAnalysis.h"
-#include "llzk/Dialect/LLZK/Util/Debug.h"
+//===-- IntervalTests.cpp - Unit tests for interval analysis ----*- C++ -*-===//
+//
+// Part of the LLZK Project, under the Apache License v2.0.
+// See LICENSE.txt for license information.
+// Copyright 2025 Veridise Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
+
+#include "llzk/Analysis/IntervalAnalysis.h"
+#include "llzk/Util/Debug.h"
 
 #include <gtest/gtest.h>
 #include <string>

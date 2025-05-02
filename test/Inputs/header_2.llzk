@@ -1,0 +1,10 @@
+// Imported via `include_pass.llzk`
+
+module attributes {veridise.lang = "llzk"} {
+  include.from "Inputs/header_1.llzk" as @std
+
+  function.def @test_func() {
+    function.call @std::@pkg_two::@my_func_2() : () -> ()
+    function.return
+  }
+}
