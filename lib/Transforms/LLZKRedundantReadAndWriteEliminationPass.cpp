@@ -17,6 +17,7 @@
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
 #include "llzk/Util/Concepts.h"
+#include "llzk/Util/StreamHelper.h"
 
 #include <mlir/IR/BuiltinOps.h>
 
@@ -239,13 +240,7 @@ public:
   bool hasStoredValue() const { return storedValue != nullptr; }
 
   void print(raw_ostream &os, int indent = 0) const {
-    std::string tab;
-    llvm::raw_string_ostream ss(tab);
-    for (int i = 0; i < indent; i++) {
-      ss << ' ';
-    }
-
-    os << tab << '[' << identifier;
+    os.indent(indent) << '[' << identifier;
     if (storedValue != nullptr) {
       os << " => " << storedValue;
     }
@@ -256,7 +251,7 @@ public:
         child->print(os, indent + 4);
         os << '\n';
       }
-      os << tab << "}";
+      os.indent(indent) << '}';
     }
   }
 
