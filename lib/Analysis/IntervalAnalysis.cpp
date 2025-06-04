@@ -820,7 +820,11 @@ void IntervalDataFlowAnalysis::visitOperation(
       debug::Appender(warning) << "operand " << val << " is not a single value " << refSet
                                << ", overapproximating";
       op->emitWarning(warning);
-      operandVals.push_back(LatticeValue());
+      // Here, we will override the prior lattice value with a new symbol, representing
+      // "any" value, then use that value for the operands.
+      ExpressionValue anyVal(field.get(), createFeltSymbol(val));
+      changed |= after->setValue(val, anyVal);
+      operandVals.emplace_back(anyVal);
     } else {
       auto ref = refSet.getSingleValue();
       ExpressionValue exprVal(field.get(), getOrCreateSymbol(ref));
@@ -920,7 +924,8 @@ llvm::APSInt IntervalDataFlowAnalysis::getConst(Operation *op) const {
   llvm::APInt fieldConst =
       TypeSwitch<Operation *, llvm::APInt>(op)
           .Case<FeltConstantOp>([&](FeltConstantOp feltConst) {
-    return feltConst.getValueAttr().getValue().zext(field.get().bitWidth());
+    llvm::APSInt constOpVal(feltConst.getValueAttr().getValue());
+    return field.get().reduce(constOpVal);
   })
           .Case<arith::ConstantIndexOp>([&](arith::ConstantIndexOp indexConst) {
     return llvm::APInt(field.get().bitWidth(), indexConst.value());
