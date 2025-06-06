@@ -28,9 +28,17 @@
     {
       # First, we define the packages used in this repository/flake
       overlays.default = final: prev: {
-        mlirWithPython = final.mlir.override {
+        pythonCustomised = final.python3.withPackages (ps: with ps; [ numpy ]);
+
+        mlirWithPython = (final.mlir.override {
           enablePythonBindings = true;
-        };
+          python3 = final.pythonCustomised;
+        }).overrideAttrs (old: {
+          # Fix numpy include path for newer numpy versions
+          cmakeFlags = old.cmakeFlags ++ [
+            "-DPython3_NumPy_INCLUDE_DIR=${final.pythonCustomised.pkgs.numpy}/lib/python3.12/site-packages/numpy/_core/include"
+          ];
+        });
 
         llzk = final.callPackage ./nix/llzk.nix { clang = final.clang_18; };
 
@@ -48,8 +56,10 @@
           doCheck = false;
         });
 
-        llzkWithPython = final.llzk.override {
+        llzkWithPython = final.callPackage ./nix/llzk.nix { 
+          clang = final.clang_18;
           mlir = final.mlirWithPython;
+          python3 = final.pythonCustomised;
         };
 
         llzkDebugClang = (final.llzk.override { stdenv = final.clangStdenv; }).overrideAttrs(attrs: {

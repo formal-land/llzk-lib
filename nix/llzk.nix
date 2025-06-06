@@ -37,6 +37,7 @@ stdenv.mkDerivation {
   ] ++ lib.optionals mlir.hasPythonBindings [
     mlir.python
     mlir.pythonDeps
+    python3
   ];
 
   cmakeFlags = [
