@@ -221,8 +221,12 @@ void ConstrainRefAnalysis::arraySubdivisionOpUpdate(
     ensure(idxIt != operandVals.end(), "improperly constructed operandVals map");
     auto &idxVals = idxIt->second;
 
-    if (idxVals.isSingleValue() && idxVals.getSingleValue().isConstantIndex()) {
-      ConstrainRefIndex idx(idxVals.getSingleValue().getConstantIndexValue());
+    // Note: we allow constant values regardless of if they are felt or index,
+    // as if they were felt, there would need to be a cast to index, and if it
+    // was missing, there would be a semantic check failure. So we accept either
+    // so we don't have to track the cast ourselves.
+    if (idxVals.isSingleValue() && idxVals.getSingleValue().isConstant()) {
+      ConstrainRefIndex idx(idxVals.getSingleValue().getConstantValue());
       indices.push_back(idx);
     } else {
       // Otherwise, assume any range is valid.
@@ -235,6 +239,15 @@ void ConstrainRefAnalysis::arraySubdivisionOpUpdate(
   }
 
   auto [newVals, _] = currVals.extract(indices);
+
+  if (mlir::isa<ReadArrayOp>(op)) {
+    ensure(newVals.isScalar(), "array read must produce a scalar value");
+  }
+  // an extract operation may yield a "scalar" value if not all dimensions of
+  // the source array are instantiated; for example, if extracting an array from
+  // an input arg, the current value is a "scalar" with an array type, and extracting
+  // from that yields another single value with indices. For example: extracting [0][1]
+  // from { arg1 } yields { arg1[0][1] }.
 
   propagateIfChanged(after, after->setValue(res, newVals));
 }
