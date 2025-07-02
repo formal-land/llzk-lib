@@ -22,6 +22,8 @@
 #include "llzk/Dialect/Polymorphic/Transforms/TransformationPasses.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
 #include "llzk/Validators/LLZKValidationPasses.h"
+#include "r1cs/Dialect/IR/Dialect.h"
+#include "r1cs/InitAllDialects.h"
 
 #include <mlir/IR/DialectRegistry.h>
 #include <mlir/Pass/PassManager.h>
@@ -30,6 +32,7 @@
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/Signals.h>
 
 #include "tools/config.h"
@@ -54,6 +57,8 @@ int main(int argc, char **argv) {
   // MLIR initialization
   mlir::DialectRegistry registry;
   llzk::registerAllDialects(registry);
+  r1cs::registerAllDialects(registry);
+
   llzk::registerAnalysisPasses();
   llzk::registerTransformationPasses();
   llzk::array::registerTransformationPasses();
