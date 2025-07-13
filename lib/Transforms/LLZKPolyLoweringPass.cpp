@@ -224,6 +224,55 @@ private:
 
     moduleOp.walk([this, &moduleOp](StructDefOp structDef) {
       FuncDefOp constrainFunc = structDef.getConstrainFuncOp();
+
+      llvm::errs() << '"' << structDef.getName() << "\"\n";
+      constrainFunc.walk([&](Operation *op) {
+        llvm::errs() << '"' << op->getName() << "\"\n";
+        // op->print(llvm::errs());
+        llvm::errs() << "Operands: ";
+        for (Value operand : op->getOperands()) {
+          llvm::errs() << "operand: " << operand << "\n";
+          // OpResult
+          if (auto opResult = dyn_cast<OpResult>(operand)) {
+            llvm::outs() << "OpResult: " << opResult.getResultNumber() << "\n";
+          }
+          if (auto definingOp = operand.getDefiningOp()) {
+            // definingOp->dump(); // Print the op that defines this operand
+        
+            // If it’s a constant, extract the value
+            if (auto constOp = dyn_cast<arith::ConstantOp>(definingOp)) {
+              auto attr = constOp.getValue();
+              llvm::outs() << "Constant: " << attr << "\n";
+        
+              // If it's an integer:
+              if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
+                llvm::outs() << "Value: " << intAttr.getValue() << "\n";
+              }
+        
+              // If it's a float:
+              if (auto floatAttr = dyn_cast<FloatAttr>(attr)) {
+                llvm::outs() << "Value: " << floatAttr.getValueAsDouble() << "\n";
+              }
+            }
+          } else {
+            // This operand is a block argument, not a result of another op
+            if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
+              llvm::outs() << "Block argument #" << blockArg.getArgNumber() << "\n";
+            }
+          }
+        }
+        llvm::errs() << '\n';
+        // dyn type check
+        // if (auto emitOp = dyn_cast<EmitEqualityOp>(op)) {
+        //   llvm::errs() << "EmitEqualityOp\n";
+        //   llvm::errs() << '"' << emitOp.getLhs() << "\"\n";
+        //   llvm::errs() << '"' << emitOp.getRhs() << "\"\n";
+        //   llvm::errs() << '\n';
+        // }
+      });
+      llvm::errs() << '\n';
+      return;
+
       FuncDefOp computeFunc = structDef.getComputeFuncOp();
       if (!constrainFunc) {
         auto diag = structDef.emitOpError();
