@@ -31,5 +31,5 @@ How to Contribute:
 This is an ongoing development. Here are some useful commands:
 
 ```sh
-time cmake --build . -j3 && ./bin/llzk-opt ../test/Analysis/constraint_dependency_graph_pass.llzk  --llzk-rocq-pass
+time cmake --build . -j3 && ./bin/llzk-opt ../test/Analysis/constraint_dependency_graph_pass.llzk --llzk-rocq-pass
 ```
