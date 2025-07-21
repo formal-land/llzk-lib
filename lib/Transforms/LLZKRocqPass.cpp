@@ -64,6 +64,9 @@ private:
     } else if (ArrayType arrayType = type.dyn_cast<ArrayType>()) {
       llvm::errs() << "Array.t ";
       printType(arrayType.getElementType());
+      for (auto dim : arrayType.getShape()) {
+        llvm::errs() << " x " << dim;
+      }
     } else {
       llvm::errs() << "Unknown type";
       type.dump();
@@ -113,16 +116,80 @@ private:
       if (auto floatAttr = dyn_cast<FloatAttr>(attr)) {
         llvm::errs() << "Value: " << floatAttr.getValueAsDouble();
       }
+    } else
+    // Constrain operations
+    if (auto emitEqualityOp = dyn_cast<EmitEqualityOp>(operation)) {
+      llvm::errs() << "EmitEqualityOp ";
+      printOperand(emitEqualityOp.getLhs());
+      llvm::errs() << " == ";
+      printOperand(emitEqualityOp.getRhs());
+    } else if (auto emitContainmentOp = dyn_cast<EmitContainmentOp>(operation)) {
+      llvm::errs() << "EmitContainmentOp ";
+      printOperand(emitContainmentOp.getRhs());
+      llvm::errs() << " in ";
+      printOperand(emitContainmentOp.getLhs());
+    } else
+    // Struct operations
+    if (auto fieldReadOp = dyn_cast<FieldReadOp>(operation)) {
+      llvm::errs() << "FieldReadOp ";
+      printOperand(fieldReadOp.getComponent());
+      llvm::errs() << "." << fieldReadOp.getFieldName();
+    } else if (auto fieldWriteOp = dyn_cast<FieldWriteOp>(operation)) {
+      llvm::errs() << "FieldWriteOp ";
+      printOperand(fieldWriteOp.getComponent());
+      llvm::errs() << "." << fieldWriteOp.getFieldName() << " <- ";
+      printOperand(fieldWriteOp.getVal());
     } else if (auto createStructOp = dyn_cast<CreateStructOp>(operation)) {
       llvm::errs() << "CreateStructOp";
-    } else if (auto returnOp = dyn_cast<ReturnOp>(operation)) {
-      llvm::errs() << "ReturnOp (";
+    } else
+    // Function operations
+    if (auto returnOp = dyn_cast<ReturnOp>(operation)) {
+      llvm::errs() << "Return (";
       for (Value operand : returnOp.getOperands()) {
         printOperand(operand);
         llvm::errs() << ", ";
       }
       llvm::errs() << ")";
-    } else {
+    } else if (auto callOp = dyn_cast<CallOp>(operation)) {
+      llvm::errs() << "Call " << callOp.getCallee() << " ";
+      llvm::errs() << "(";
+      for (Value operand : callOp.getArgOperands()) {
+        printOperand(operand);
+        llvm::errs() << ", ";
+      }
+      llvm::errs() << ")";
+    } else
+    // Felt operations
+    if (auto feltConstantOp = dyn_cast<FeltConstantOp>(operation)) {
+      llvm::errs() << "Felt.const " << feltConstantOp.getValue().getValue();
+    } else if (auto addFeltOp = dyn_cast<AddFeltOp>(operation)) {
+      llvm::errs() << "Felt.add ";
+      printOperand(addFeltOp.getLhs());
+      llvm::errs() << " ";
+      printOperand(addFeltOp.getRhs());
+    } else if (auto subFeltOp = dyn_cast<SubFeltOp>(operation)) {
+      llvm::errs() << "Felt.sub ";
+      printOperand(subFeltOp.getLhs());
+      llvm::errs() << " ";
+      printOperand(subFeltOp.getRhs());
+    } else if (auto mulFeltOp = dyn_cast<MulFeltOp>(operation)) {
+      llvm::errs() << "Felt.mul ";
+      printOperand(mulFeltOp.getLhs());
+      llvm::errs() << " ";
+      printOperand(mulFeltOp.getRhs());
+    } else if (auto divFeltOp = dyn_cast<DivFeltOp>(operation)) {
+      llvm::errs() << "Felt.div ";
+      printOperand(divFeltOp.getLhs());
+      llvm::errs() << " ";
+      printOperand(divFeltOp.getRhs());
+    } else if (auto modFeltOp = dyn_cast<ModFeltOp>(operation)) {
+      llvm::errs() << "Felt.mod ";
+      printOperand(modFeltOp.getLhs());
+      llvm::errs() << " ";
+      printOperand(modFeltOp.getRhs());
+    } else
+    // Unknown operations
+    {
       llvm::errs() << "Unknown Operation: " << operation->getName();
       exit(1);
     }
@@ -163,22 +230,44 @@ private:
     llvm::errs() << indent(level + 1) << "done.\n";
   }
 
+  void printStructDefOp(StructDefOp structDefOp) {
+    llvm::errs() << "Module " << structDefOp.getName() << ".\n";
+    llvm::errs() << indent(1) << "Parameter t : Set.\n\n";
+    for (auto fieldDefOp : structDefOp.getFieldDefs()) {
+      llvm::errs() << indent(1) << "Field " << fieldDefOp.getSymName() << " : ";
+      printType(fieldDefOp.getType());
+      llvm::errs() << ".\n\n";
+    }
+    printFunction(1, structDefOp.getComputeFuncOp());
+    llvm::errs() << "\n";
+    printFunction(1, structDefOp.getConstrainFuncOp());
+    llvm::errs() << "\n";
+    llvm::errs() << "End " << structDefOp.getName() << ".\n";
+  }
+
+  void printTopLevelOperations(ModuleOp moduleOp) {
+    for (Operation &operation : moduleOp.getBody()->getOperations()) {
+      if (auto subModuleOp = dyn_cast<ModuleOp>(operation)) {
+        printTopLevelOperations(subModuleOp);
+      } else if (auto structDefOp = dyn_cast<StructDefOp>(operation)) {
+        llvm::errs() << "\n";
+        printStructDefOp(structDefOp);
+      } else if (auto funcDefOp = dyn_cast<FuncDefOp>(operation)) {
+        llvm::errs() << "\n";
+        printFunction(0, funcDefOp);
+      } else {
+        llvm::errs() << "Unknown TopLevel Operation: " << operation.getName() << "\n";
+        exit(1);
+      }
+    }
+  }
+
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
-    unsigned level = 0;
 
     llvm::errs() << "Require Import RocqOfLLZK.RocqOfLLZK.\n";
 
-    moduleOp.walk([this, &moduleOp, &level](StructDefOp structDef) {
-      llvm::errs() << "\n";
-      llvm::errs() << "Module " << structDef.getName() << ".\n";
-      level++;
-      printFunction(level, structDef.getComputeFuncOp());
-      llvm::errs() << "\n";
-      printFunction(level, structDef.getConstrainFuncOp());
-      llvm::errs() << "End " << structDef.getName() << ".\n";
-      level--;
-    });
+    printTopLevelOperations(moduleOp);
   }
 };
 } // namespace
