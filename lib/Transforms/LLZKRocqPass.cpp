@@ -16,6 +16,8 @@
 #include "llzk/Dialect/Constrain/IR/Ops.h"
 #include "llzk/Dialect/Felt/IR/Ops.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
+#include "llzk/Dialect/Include/IR/Ops.h"
+#include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Transforms/LLZKLoweringUtils.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
 
@@ -37,12 +39,15 @@ namespace llzk {
 } // namespace llzk
 
 using namespace mlir;
+using namespace mlir::scf;
 using namespace llzk;
 using namespace llzk::array;
 using namespace llzk::component;
 using namespace llzk::constrain;
 using namespace llzk::felt;
 using namespace llzk::function;
+using namespace llzk::include;
+using namespace llzk::polymorphic;
 
 #define DEBUG_TYPE "llzk-rocq-pass"
 #define AUXILIARY_FIELD_PREFIX "__llzk_rocq_pass_aux_field_"
@@ -67,6 +72,8 @@ private:
       for (auto dim : arrayType.getShape()) {
         llvm::errs() << " x " << dim;
       }
+    } else if (auto indexType = type.dyn_cast<IndexType>()) {
+      llvm::errs() << "Index.t";
     } else {
       llvm::errs() << "Unknown type";
       type.dump();
@@ -104,17 +111,36 @@ private:
   void printOperation(Operation *operation) {
     // If it’s a constant, extract the value
     if (auto constOp = dyn_cast<arith::ConstantOp>(operation)) {
-      auto attr = constOp.getValue();
-      llvm::errs() << "Constant: " << attr;
-
-      // If it's an integer:
-      if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
-        llvm::errs() << "Value: " << intAttr.getValue();
+      auto value = constOp.getValue();
+      if (auto integerAttr = dyn_cast<IntegerAttr>(value)) {
+        llvm::errs() << "Integer.Make " << integerAttr.getValue();
+      } else {
+        llvm::errs() << "Unknown constant value: " << value;
+        exit(1);
       }
-
-      // If it's a float:
-      if (auto floatAttr = dyn_cast<FloatAttr>(attr)) {
-        llvm::errs() << "Value: " << floatAttr.getValueAsDouble();
+    } else
+    // Array operations
+    if (auto createArrayOp = dyn_cast<CreateArrayOp>(operation)) {
+      llvm::errs() << "Array.new ";
+      for (auto element : createArrayOp.getElements()) {
+        printOperand(element);
+        llvm::errs() << ", ";
+      }
+    } else if (auto readArrayOp = dyn_cast<ReadArrayOp>(operation)) {
+      llvm::errs() << "Array.read ";
+      printOperand(readArrayOp.getArrRef());
+      llvm::errs() << "[";
+      for (auto index : readArrayOp.getIndices()) {
+        printOperand(index);
+        llvm::errs() << ", ";
+      }
+      llvm::errs() << "]";
+    } else if (auto extractArrayOp = dyn_cast<ExtractArrayOp>(operation)) {
+      llvm::errs() << "Array.extract ";
+      printOperand(extractArrayOp.getArrRef());
+      llvm::errs() << "[";
+      for (auto index : extractArrayOp.getIndices()) {
+        printOperand(index);
       }
     } else
     // Constrain operations
@@ -128,36 +154,6 @@ private:
       printOperand(emitContainmentOp.getRhs());
       llvm::errs() << " in ";
       printOperand(emitContainmentOp.getLhs());
-    } else
-    // Struct operations
-    if (auto fieldReadOp = dyn_cast<FieldReadOp>(operation)) {
-      llvm::errs() << "FieldReadOp ";
-      printOperand(fieldReadOp.getComponent());
-      llvm::errs() << "." << fieldReadOp.getFieldName();
-    } else if (auto fieldWriteOp = dyn_cast<FieldWriteOp>(operation)) {
-      llvm::errs() << "FieldWriteOp ";
-      printOperand(fieldWriteOp.getComponent());
-      llvm::errs() << "." << fieldWriteOp.getFieldName() << " <- ";
-      printOperand(fieldWriteOp.getVal());
-    } else if (auto createStructOp = dyn_cast<CreateStructOp>(operation)) {
-      llvm::errs() << "CreateStructOp";
-    } else
-    // Function operations
-    if (auto returnOp = dyn_cast<ReturnOp>(operation)) {
-      llvm::errs() << "Return (";
-      for (Value operand : returnOp.getOperands()) {
-        printOperand(operand);
-        llvm::errs() << ", ";
-      }
-      llvm::errs() << ")";
-    } else if (auto callOp = dyn_cast<CallOp>(operation)) {
-      llvm::errs() << "Call " << callOp.getCallee() << " ";
-      llvm::errs() << "(";
-      for (Value operand : callOp.getArgOperands()) {
-        printOperand(operand);
-        llvm::errs() << ", ";
-      }
-      llvm::errs() << ")";
     } else
     // Felt operations
     if (auto feltConstantOp = dyn_cast<FeltConstantOp>(operation)) {
@@ -187,6 +183,73 @@ private:
       printOperand(modFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(modFeltOp.getRhs());
+    } else
+    // Function operations
+    if (auto returnOp = dyn_cast<ReturnOp>(operation)) {
+      llvm::errs() << "Return (";
+      for (Value operand : returnOp.getOperands()) {
+        printOperand(operand);
+        llvm::errs() << ", ";
+      }
+      llvm::errs() << ")";
+    } else if (auto callOp = dyn_cast<CallOp>(operation)) {
+      llvm::errs() << "Call " << callOp.getCallee() << " ";
+      llvm::errs() << "(";
+      for (Value operand : callOp.getArgOperands()) {
+        printOperand(operand);
+        llvm::errs() << ", ";
+      }
+      llvm::errs() << ")";
+    } else
+    // Include operations
+    if (auto includeOp = dyn_cast<IncludeOp>(operation)) {
+      llvm::errs() << "IncludeOp " << includeOp.getSymName() << " from " << includeOp.getPath();
+    } else
+    // Polymorphic operations
+    if (auto constReadOp = dyn_cast<ConstReadOp>(operation)) {
+      llvm::errs() << "ConstReadOp " << constReadOp.getConstName();
+    } else
+    // Scf operations
+    if (auto forOp = dyn_cast<ForOp>(operation)) {
+      llvm::errs() << "ForOp ";
+      printOperand(forOp.getLowerBound());
+      llvm::errs() << " to ";
+      printOperand(forOp.getUpperBound());
+      llvm::errs() << " step ";
+      printOperand(forOp.getStep());
+      llvm::errs() << " initArgs: ";
+      for (auto initArg : forOp.getInitArgs()) {
+        printOperand(initArg);
+        llvm::errs() << ", ";
+      }
+      llvm::errs() << " do\n";
+      Region &region = forOp.getRegion();
+      for (Block &block : region) {
+        for (Operation &op : block) {
+          printOperation(&op);
+          llvm::errs() << "\n";
+        }
+      }
+    } else if (auto yieldOp = dyn_cast<YieldOp>(operation)) {
+      llvm::errs() << "YieldOp (";
+      for (Value result : yieldOp.getResults()) {
+        printOperand(result);
+        llvm::errs() << ", ";
+      }
+      llvm::errs() << ")";
+    } else
+    // Struct operations
+    if (auto fieldReadOp = dyn_cast<FieldReadOp>(operation)) {
+      llvm::errs() << "FieldReadOp ";
+      printOperand(fieldReadOp.getComponent());
+      llvm::errs() << "." << fieldReadOp.getFieldName();
+    } else if (auto fieldWriteOp = dyn_cast<FieldWriteOp>(operation)) {
+      llvm::errs() << "FieldWriteOp ";
+      printOperand(fieldWriteOp.getComponent());
+      llvm::errs() << "." << fieldWriteOp.getFieldName() << " <- ";
+      printOperand(fieldWriteOp.getVal());
+    } else if (auto createStructOp = dyn_cast<CreateStructOp>(operation)) {
+      llvm::errs() << "CreateStructOp";
     } else
     // Unknown operations
     {
@@ -247,14 +310,17 @@ private:
 
   void printTopLevelOperations(ModuleOp moduleOp) {
     for (Operation &operation : moduleOp.getBody()->getOperations()) {
-      if (auto subModuleOp = dyn_cast<ModuleOp>(operation)) {
+      if (auto funcDefOp = dyn_cast<FuncDefOp>(operation)) {
+        llvm::errs() << "\n";
+        printFunction(0, funcDefOp);
+      } else if (auto includeOp = dyn_cast<IncludeOp>(operation)) {
+        llvm::errs() << "\n";
+        llvm::errs() << "Require Import " << includeOp.getPath() << " as " << includeOp.getSymName() << ".\n";
+      } else if (auto subModuleOp = dyn_cast<ModuleOp>(operation)) {
         printTopLevelOperations(subModuleOp);
       } else if (auto structDefOp = dyn_cast<StructDefOp>(operation)) {
         llvm::errs() << "\n";
         printStructDefOp(structDefOp);
-      } else if (auto funcDefOp = dyn_cast<FuncDefOp>(operation)) {
-        llvm::errs() << "\n";
-        printFunction(0, funcDefOp);
       } else {
         llvm::errs() << "Unknown TopLevel Operation: " << operation.getName() << "\n";
         exit(1);
