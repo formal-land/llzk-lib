@@ -73,9 +73,16 @@ private:
       }
       llvm::errs() << "Array.t ";
       printType(true, arrayType.getElementType());
+      llvm::errs() << " [";
+      bool isFirst = true;
       for (auto dim : arrayType.getShape()) {
-        llvm::errs() << " x " << dim;
+        if (!isFirst) {
+          llvm::errs() << "; ";
+        }
+        isFirst = false;
+        llvm::errs() << dim;
       }
+      llvm::errs() << "]";
       if (withParens) {
         llvm::errs() << ")";
       }
@@ -144,7 +151,7 @@ private:
   }
 
   void printOperation(Operation* topLevelOperation, Operation *operation) {
-    llvm::errs() << "let! ";
+    llvm::errs() << "let* ";
     if (operation->getResults().size() == 0) {
       llvm::errs() << "_";
     } else {
@@ -215,44 +222,49 @@ private:
     } else
     // Constrain operations
     if (auto emitEqualityOp = dyn_cast<EmitEqualityOp>(operation)) {
-      llvm::errs() << "EmitEqualityOp ";
+      llvm::errs() << "M.AssertEq ";
       printOperand(topLevelOperation, emitEqualityOp.getLhs());
-      llvm::errs() << " == ";
+      llvm::errs() << " ";
       printOperand(topLevelOperation, emitEqualityOp.getRhs());
     } else if (auto emitContainmentOp = dyn_cast<EmitContainmentOp>(operation)) {
-      llvm::errs() << "EmitContainmentOp ";
+      llvm::errs() << "M.AssertIn ";
       printOperand(topLevelOperation, emitContainmentOp.getRhs());
-      llvm::errs() << " in ";
+      llvm::errs() << " ";
       printOperand(topLevelOperation, emitContainmentOp.getLhs());
     } else
     // Felt operations
     if (auto feltConstantOp = dyn_cast<FeltConstantOp>(operation)) {
-      llvm::errs() << "Felt.const " << feltConstantOp.getValue().getValue();
+      llvm::errs() << "M.Pure (UnOp.from " << feltConstantOp.getValue().getValue() << ")";
     } else if (auto addFeltOp = dyn_cast<AddFeltOp>(operation)) {
-      llvm::errs() << "Felt.add ";
+      llvm::errs() << "M.Pure (BinOp.add ";
       printOperand(topLevelOperation, addFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, addFeltOp.getRhs());
+      llvm::errs() << ")";
     } else if (auto subFeltOp = dyn_cast<SubFeltOp>(operation)) {
-      llvm::errs() << "Felt.sub ";
+      llvm::errs() << "M.Pure (BinOp.sub ";
       printOperand(topLevelOperation, subFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, subFeltOp.getRhs());
+      llvm::errs() << ")";
     } else if (auto mulFeltOp = dyn_cast<MulFeltOp>(operation)) {
-      llvm::errs() << "Felt.mul ";
+      llvm::errs() << "M.Pure (BinOp.mul ";
       printOperand(topLevelOperation, mulFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, mulFeltOp.getRhs());
+      llvm::errs() << ")";
     } else if (auto divFeltOp = dyn_cast<DivFeltOp>(operation)) {
-      llvm::errs() << "Felt.div ";
+      llvm::errs() << "M.Pure (BinOp.div ";
       printOperand(topLevelOperation, divFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, divFeltOp.getRhs());
+      llvm::errs() << ")";
     } else if (auto modFeltOp = dyn_cast<ModFeltOp>(operation)) {
-      llvm::errs() << "Felt.mod ";
+      llvm::errs() << "M.Pure (BinOp.mod ";
       printOperand(topLevelOperation, modFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, modFeltOp.getRhs());
+      llvm::errs() << ")";
     } else
     // Function operations
     if (auto returnOp = dyn_cast<ReturnOp>(operation)) {
@@ -263,13 +275,11 @@ private:
       }
       llvm::errs() << ")";
     } else if (auto callOp = dyn_cast<CallOp>(operation)) {
-      llvm::errs() << "Call " << callOp.getCallee() << " ";
-      llvm::errs() << "(";
+      llvm::errs() << callOp.getCallee().getLeafReference().str();
       for (Value operand : callOp.getArgOperands()) {
+        llvm::errs() << " ";
         printOperand(topLevelOperation, operand);
-        llvm::errs() << ", ";
       }
-      llvm::errs() << ")";
     } else
     // Polymorphic operations
     if (auto constReadOp = dyn_cast<ConstReadOp>(operation)) {
@@ -306,16 +316,20 @@ private:
     } else
     // Struct operations
     if (auto fieldReadOp = dyn_cast<FieldReadOp>(operation)) {
-      llvm::errs() << "FieldReadOp ";
+      llvm::errs() << "M.Pure ";
       printOperand(topLevelOperation, fieldReadOp.getComponent());
-      llvm::errs() << "." << fieldReadOp.getFieldName();
+      llvm::errs() << ".(";
+      llvm::errs() << fieldReadOp.getComponent().getType().getNameRef().getRootReference().str();
+      llvm::errs() << "." << fieldReadOp.getFieldName() << ")";
     } else if (auto fieldWriteOp = dyn_cast<FieldWriteOp>(operation)) {
-      llvm::errs() << "FieldWriteOp ";
+      llvm::errs() << "M.FieldWrite ";
       printOperand(topLevelOperation, fieldWriteOp.getComponent());
-      llvm::errs() << "." << fieldWriteOp.getFieldName() << " <- ";
+      llvm::errs() << ".(";
+      llvm::errs() << fieldWriteOp.getComponent().getType().getNameRef().getRootReference().str();
+      llvm::errs() << "." << fieldWriteOp.getFieldName() << ") ";
       printOperand(topLevelOperation, fieldWriteOp.getVal());
     } else if (auto createStructOp = dyn_cast<CreateStructOp>(operation)) {
-      llvm::errs() << "CreateStructOp";
+      llvm::errs() << "M.CreateStruct";
     } else
     // Unknown operations
     {
@@ -326,7 +340,7 @@ private:
   }
 
   void printFunction(unsigned level, Operation* topLevelOperation, FuncDefOp func) {
-    llvm::errs() << indent(level) << "Definition " << func.getName();
+    llvm::errs() << indent(level) << "Definition " << func.getName() << " {p} `{IsPrime p}";
     for (auto arg : func.getArguments()) {
       llvm::errs() << " (arg_" << arg.getArgNumber() << " : ";
       printType(false, arg.getType());
@@ -345,7 +359,7 @@ private:
 
       // We expect the "return" to be the last operation in the function
       if (auto returnOp = dyn_cast<ReturnOp>(op)) {
-        llvm::errs() << indent(level + 1) << "M.Return ";
+        llvm::errs() << indent(level + 1) << "M.Pure ";
         if (returnOp.getOperands().size() == 0) {
           llvm::errs() << "tt";
         } else {
@@ -374,40 +388,48 @@ private:
     llvm::errs() << ".\n";
   }
 
-  void printStructDefOp(Operation* topLevelOperation, StructDefOp* structDefOp) {
-    llvm::errs() << "Module " << structDefOp->getName() << ".\n";
+  void printStructDefOp(unsigned level, Operation* topLevelOperation, StructDefOp* structDefOp) {
+    llvm::errs() << indent(level) << "Module " << structDefOp->getName() << ".\n";
     // Special case when there are no fields
     if (structDefOp->getFieldDefs().size() == 0) {
-      llvm::errs() << indent(1) << "Inductive t : Set := Make.";
+      llvm::errs() << indent(level + 1) << "Inductive t : Set := Make.";
     } else {
-      llvm::errs() << indent(1) << "Record t : Set := {\n";
+      llvm::errs() << indent(level + 1) << "Record t : Set := {\n";
       for (auto fieldDefOp : structDefOp->getFieldDefs()) {
-        llvm::errs() << indent(2) << fieldDefOp.getSymName() << " : ";
+        llvm::errs() << indent(level + 2) << fieldDefOp.getSymName() << " : ";
         printType(false, fieldDefOp.getType());
         llvm::errs() << ";\n";
       }
-      llvm::errs() << indent(1) << "}.";
+      llvm::errs() << indent(level + 1) << "}.";
     }
     llvm::errs() << "\n\n";
-    printFunction(1, topLevelOperation, structDefOp->getConstrainFuncOp());
+    printFunction(level + 1, topLevelOperation, structDefOp->getConstrainFuncOp());
     llvm::errs() << "\n";
-    printFunction(1, topLevelOperation, structDefOp->getComputeFuncOp());
-    llvm::errs() << "End " << structDefOp->getName() << ".\n";
+    printFunction(level + 1, topLevelOperation, structDefOp->getComputeFuncOp());
+    llvm::errs() << indent(level) << "End " << structDefOp->getName() << ".\n";
   }
 
-  void printTopLevelOperations(Operation* topLevelOperation, ModuleOp* moduleOp) {
+  void printTopLevelOperations(unsigned level, Operation* topLevelOperation, ModuleOp* moduleOp) {
     for (Operation &operation : moduleOp->getBody()->getOperations()) {
       if (auto funcDefOp = dyn_cast<FuncDefOp>(operation)) {
         llvm::errs() << "\n";
-        printFunction(0, topLevelOperation, funcDefOp);
+        printFunction(level, topLevelOperation, funcDefOp);
       } else if (auto includeOp = dyn_cast<IncludeOp>(operation)) {
         llvm::errs() << "\n";
         llvm::errs() << "Require Import " << includeOp.getPath() << " as " << includeOp.getSymName() << ".\n";
       } else if (auto subModuleOp = dyn_cast<ModuleOp>(operation)) {
-        printTopLevelOperations(topLevelOperation, &subModuleOp);
+        mlir::Location loc = operation.getLoc();
+        std::string moduleName = "Anonymous";
+        if (auto fileLoc = loc.dyn_cast<mlir::FileLineColLoc>()) {
+          moduleName = "Line_" +std::to_string(fileLoc.getLine());
+        }
+        llvm::errs() << "\n";
+        llvm::errs() << indent(level) << "Module Module_" << moduleName << ".";
+        printTopLevelOperations(level + 1, topLevelOperation, &subModuleOp);
+        llvm::errs() << indent(level) << "End Module_" << moduleName << ".\n";
       } else if (auto structDefOp = dyn_cast<StructDefOp>(operation)) {
         llvm::errs() << "\n";
-        printStructDefOp(topLevelOperation, &structDefOp);
+        printStructDefOp(level, topLevelOperation, &structDefOp);
       } else {
         llvm::errs() << "Unknown TopLevel Operation: " << operation.getName() << "\n";
         exit(1);
@@ -420,7 +442,7 @@ private:
 
     llvm::errs() << "Require Import RocqOfLLZK.RocqOfLLZK.\n";
 
-    printTopLevelOperations(moduleOp.getOperation(), &moduleOp);
+    printTopLevelOperations(0, moduleOp.getOperation(), &moduleOp);
   }
 };
 } // namespace
