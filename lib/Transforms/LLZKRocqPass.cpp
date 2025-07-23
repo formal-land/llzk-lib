@@ -151,7 +151,16 @@ private:
   }
 
   void printOperation(Operation* topLevelOperation, Operation *operation) {
-    llvm::errs() << "let* ";
+    bool isPure =
+      isa<FeltConstantOp>(operation) ||
+      isa<AddFeltOp>(operation) ||
+      isa<SubFeltOp>(operation) ||
+      isa<MulFeltOp>(operation) ||
+      isa<DivFeltOp>(operation) ||
+      isa<ModFeltOp>(operation) ||
+      isa<FieldReadOp>(operation);
+    llvm::errs() << (isPure ? "let " : "let* ");
+
     if (operation->getResults().size() == 0) {
       llvm::errs() << "_";
     } else {
@@ -234,37 +243,32 @@ private:
     } else
     // Felt operations
     if (auto feltConstantOp = dyn_cast<FeltConstantOp>(operation)) {
-      llvm::errs() << "M.Pure (UnOp.from " << feltConstantOp.getValue().getValue() << ")";
+      llvm::errs() << "UnOp.from " << feltConstantOp.getValue().getValue();
     } else if (auto addFeltOp = dyn_cast<AddFeltOp>(operation)) {
-      llvm::errs() << "M.Pure (BinOp.add ";
+      llvm::errs() << "BinOp.add ";
       printOperand(topLevelOperation, addFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, addFeltOp.getRhs());
-      llvm::errs() << ")";
     } else if (auto subFeltOp = dyn_cast<SubFeltOp>(operation)) {
-      llvm::errs() << "M.Pure (BinOp.sub ";
+      llvm::errs() << "BinOp.sub ";
       printOperand(topLevelOperation, subFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, subFeltOp.getRhs());
-      llvm::errs() << ")";
     } else if (auto mulFeltOp = dyn_cast<MulFeltOp>(operation)) {
-      llvm::errs() << "M.Pure (BinOp.mul ";
+      llvm::errs() << "BinOp.mul ";
       printOperand(topLevelOperation, mulFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, mulFeltOp.getRhs());
-      llvm::errs() << ")";
     } else if (auto divFeltOp = dyn_cast<DivFeltOp>(operation)) {
-      llvm::errs() << "M.Pure (BinOp.div ";
+      llvm::errs() << "BinOp.div ";
       printOperand(topLevelOperation, divFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, divFeltOp.getRhs());
-      llvm::errs() << ")";
     } else if (auto modFeltOp = dyn_cast<ModFeltOp>(operation)) {
-      llvm::errs() << "M.Pure (BinOp.mod ";
+      llvm::errs() << "BinOp.mod ";
       printOperand(topLevelOperation, modFeltOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, modFeltOp.getRhs());
-      llvm::errs() << ")";
     } else
     // Function operations
     if (auto returnOp = dyn_cast<ReturnOp>(operation)) {
@@ -316,7 +320,6 @@ private:
     } else
     // Struct operations
     if (auto fieldReadOp = dyn_cast<FieldReadOp>(operation)) {
-      llvm::errs() << "M.Pure ";
       printOperand(topLevelOperation, fieldReadOp.getComponent());
       llvm::errs() << ".(";
       llvm::errs() << fieldReadOp.getComponent().getType().getNameRef().getRootReference().str();
