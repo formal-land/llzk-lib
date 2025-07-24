@@ -78,11 +78,17 @@ private:
       llvm::errs() << "Felt.t";
     } else if (StructType structType = type.dyn_cast<StructType>()) {
       auto params = structType.getParams();
+      if (params && !params.empty() && withParens) {
+        llvm::errs() << "(";
+      }
       llvm::errs() << structType.getNameRef().getRootReference().str() << ".t";
-      if (params) {
+      if (params && !params.empty()) {
         for (auto param : params) {
           llvm::errs() << " ";
           printAttr(param);
+        }
+        if (withParens) {
+          llvm::errs() << ")";
         }
       }
     } else if (ArrayType arrayType = type.dyn_cast<ArrayType>()) {
@@ -127,7 +133,7 @@ private:
           llvm::errs() << "* ";
         }
         isFirst = false;
-        printType(false, type);
+        printType(types.size() <= 1, type);
       }
       if (withParens && types.size() > 1) {
         llvm::errs() << ")";
@@ -184,6 +190,55 @@ private:
 
   void printOperation(unsigned level, Operation* topLevelOperation, Operation *operation) {
     llvm::errs() << indent(level);
+
+    // Return
+    if (auto returnOp = dyn_cast<ReturnOp>(operation)) {
+      llvm::errs() << "M.Pure ";
+      if (returnOp.getOperands().size() == 0) {
+        llvm::errs() << "tt";
+      } else {
+        if (returnOp.getOperands().size() > 1) {
+          llvm::errs() << "(";
+        }
+        bool isFirst = true;
+        for (Value operand : returnOp.getOperands()) {
+          if (!isFirst) {
+            llvm::errs() << ", ";
+          }
+          isFirst = false;
+          printOperand(topLevelOperation, operand);
+        }
+        if (returnOp.getOperands().size() > 1) {
+          llvm::errs() << ")";
+        }
+      }
+      return;
+    }
+
+    // Yield
+    if (auto yieldOp = dyn_cast<YieldOp>(operation)) {
+      llvm::errs() << "M.yield ";
+      if (yieldOp.getResults().size() == 0) {
+        llvm::errs() << "tt";
+      } else {
+        if (yieldOp.getResults().size() > 1) {
+          llvm::errs() << "(";
+        }
+        bool isFirst = true;
+        for (Value result : yieldOp.getResults()) {
+          if (!isFirst) {
+            llvm::errs() << "; ";
+          }
+          isFirst = false;
+          printOperand(topLevelOperation, result);
+        }
+        if (yieldOp.getResults().size() > 1) {
+          llvm::errs() << ")";
+        }
+      }
+      return;
+    }
+
     bool isPure =
       isa<arith::ConstantOp>(operation) ||
       isa<CreateArrayOp>(operation) ||
@@ -237,7 +292,7 @@ private:
     if (auto constOp = dyn_cast<arith::ConstantOp>(operation)) {
       auto value = constOp.getValue();
       if (auto integerAttr = dyn_cast<IntegerAttr>(value)) {
-        llvm::errs() << integerAttr.getValue() << " % nat";
+        llvm::errs() << integerAttr.getValue();
       } else {
         llvm::errs() << "Unknown constant value: " << value;
         exit(1);
@@ -258,33 +313,42 @@ private:
     } else if (auto readArrayOp = dyn_cast<ReadArrayOp>(operation)) {
       llvm::errs() << "Array.read ";
       printOperand(topLevelOperation, readArrayOp.getArrRef());
-      llvm::errs() << " [";
-      bool isFirst = true;
+      llvm::errs() << " (";
       for (auto index : readArrayOp.getIndices()) {
-        if (!isFirst) {
-          llvm::errs() << "; ";
-        }
-        isFirst = false;
         printOperand(topLevelOperation, index);
+        llvm::errs() << ", ";
       }
-      llvm::errs() << "]";
+      llvm::errs() << "tt)";
     } else if (auto extractArrayOp = dyn_cast<ExtractArrayOp>(operation)) {
       llvm::errs() << "Array.extract ";
-      printOperand(topLevelOperation, extractArrayOp.getArrRef());
-      llvm::errs() << " [";
-      bool isFirst = true;
-      for (auto index : extractArrayOp.getIndices()) {
-        if (!isFirst) {
+      unsigned resultSize = 0;
+      for (Type type : resultTypes) {
+        if (auto arrayType = type.dyn_cast<ArrayType>()) {
+          resultSize = arrayType.getDimensionSizes().size();
+        } else {
+          llvm::errs() << "Expected array result type, got " << type;
+          exit(1);
+        }
+      }
+      llvm::errs() << "(Ns := [";
+      for (unsigned i = 0; i < resultSize; i++) {
+        llvm::errs() << "_";
+        if (i < resultSize - 1) {
           llvm::errs() << "; ";
         }
-        isFirst = false;
-        printOperand(topLevelOperation, index);
       }
-      llvm::errs() << "]";
+      llvm::errs() << "]) ";
+      printOperand(topLevelOperation, extractArrayOp.getArrRef());
+      llvm::errs() << " (";
+      for (auto index : extractArrayOp.getIndices()) {
+        printOperand(topLevelOperation, index);
+        llvm::errs() << ", ";
+      }
+      llvm::errs() << "tt)";
     } else
     // Constrain operations
     if (auto emitEqualityOp = dyn_cast<EmitEqualityOp>(operation)) {
-      llvm::errs() << "M.AssertEq ";
+      llvm::errs() << "M.AssertEqual ";
       printOperand(topLevelOperation, emitEqualityOp.getLhs());
       llvm::errs() << " ";
       printOperand(topLevelOperation, emitEqualityOp.getRhs());
@@ -324,14 +388,7 @@ private:
       printOperand(topLevelOperation, modFeltOp.getRhs());
     } else
     // Function operations
-    if (auto returnOp = dyn_cast<ReturnOp>(operation)) {
-      llvm::errs() << "Return (";
-      for (Value operand : returnOp.getOperands()) {
-        printOperand(topLevelOperation, operand);
-        llvm::errs() << ", ";
-      }
-      llvm::errs() << ")";
-    } else if (auto callOp = dyn_cast<CallOp>(operation)) {
+    if (auto callOp = dyn_cast<CallOp>(operation)) {
       auto callee = callOp.getCallee();
       llvm::errs() << callee.getRootReference().str();
       for (auto nestedRef : callee.getNestedReferences()) {
@@ -348,7 +405,7 @@ private:
     } else
     // Scf operations
     if (auto forOp = dyn_cast<ForOp>(operation)) {
-      llvm::errs() << "M.For ";
+      llvm::errs() << "M.for_ ";
       printOperand(topLevelOperation, forOp.getLowerBound());
       llvm::errs() << " (* to *) ";
       printOperand(topLevelOperation, forOp.getUpperBound());
@@ -376,17 +433,6 @@ private:
         }
       }
       llvm::errs() << indent(level) << ")";
-    } else if (auto yieldOp = dyn_cast<YieldOp>(operation)) {
-      llvm::errs() << "M.Yield [";
-      bool isFirst = true;
-      for (Value result : yieldOp.getResults()) {
-        if (!isFirst) {
-          llvm::errs() << "; ";
-        }
-        isFirst = false;
-        printOperand(topLevelOperation, result);
-      }
-      llvm::errs() << "]";
     } else
     // Struct operations
     if (auto fieldReadOp = dyn_cast<FieldReadOp>(operation)) {
@@ -440,7 +486,7 @@ private:
     StructDefOp* structDefOp,
     FuncDefOp func
   ) {
-    llvm::errs() << indent(level) << "Definition " << func.getName() << " {p} `{IsPrime p}";
+    llvm::errs() << indent(level) << "Definition " << func.getName() << " {p} `{Prime p}";
     if (structDefOp) {
       printConstParams(structDefOp, true);
     }
@@ -461,38 +507,11 @@ private:
     }
     llvm::errs() << " :=\n";
 
-    func.walk([&](Operation *op) {
-      // Skip if this is a function definition, as it is itself
-      if (isa<FuncDefOp>(op)) {
-        return;
+    for (Block &block : func.getBody()) {
+      for (Operation &op : block) {
+        printOperation(level + 1, topLevelOperation, &op);
       }
-
-      // We expect the "return" to be the last operation in the function
-      if (auto returnOp = dyn_cast<ReturnOp>(op)) {
-        llvm::errs() << indent(level + 1) << "M.Pure ";
-        if (returnOp.getOperands().size() == 0) {
-          llvm::errs() << "tt";
-        } else {
-          if (returnOp.getOperands().size() > 1) {
-            llvm::errs() << "(";
-          }
-          bool isFirst = true;
-          for (Value operand : returnOp.getOperands()) {
-            if (!isFirst) {
-              llvm::errs() << ", ";
-            }
-            isFirst = false;
-            printOperand(topLevelOperation, operand);
-          }
-          if (returnOp.getOperands().size() > 1) {
-            llvm::errs() << ")";
-          }
-        }
-        return;
-      }
-
-      printOperation(level + 1, topLevelOperation, op);
-    });
+    }
 
     llvm::errs() << ".\n";
   }
@@ -563,7 +582,8 @@ private:
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
-    llvm::errs() << "Require Import RocqOfLLZK.RocqOfLLZK.\n";
+    llvm::errs() << "(* Generated *)\n";
+    llvm::errs() << "Require Import Garden.LLZK.M.\n";
 
     printTopLevelOperations(0, moduleOp.getOperation(), &moduleOp);
   }
