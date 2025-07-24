@@ -62,11 +62,29 @@ private:
     return std::string(level * 2, ' ');
   }
 
+  void printAttr(Attribute attr) {
+    if (auto symAttr = attr.dyn_cast<mlir::SymbolRefAttr>()) {
+      llvm::errs() << symAttr.getRootReference().str();
+    } else if (auto intAttr = attr.dyn_cast<mlir::IntegerAttr>()) {
+      llvm::errs() << intAttr.getValue();
+    } else {
+      llvm::errs() << "Unknown Attr: " << attr;
+      exit(1);
+    }
+  }
+
   void printType(bool withParens, Type type) {
     if (type.isa<FeltType>()) {
       llvm::errs() << "Felt.t";
     } else if (StructType structType = type.dyn_cast<StructType>()) {
+      auto params = structType.getParams();
       llvm::errs() << structType.getNameRef().getRootReference().str() << ".t";
+      if (params) {
+        for (auto param : params) {
+          llvm::errs() << " ";
+          printAttr(param);
+        }
+      }
     } else if (ArrayType arrayType = type.dyn_cast<ArrayType>()) {
       if (withParens) {
         llvm::errs() << "(";
@@ -143,21 +161,39 @@ private:
     if (auto opResult = dyn_cast<OpResult>(operand)) {
       llvm::errs() << "var_" << getResultNameWithoutPercent(topLevelOperation, operand);
     } else if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
-      llvm::errs() << "arg_" << blockArg.getArgNumber();
+      Operation* owningOperation = blockArg.getOwner()->getParentOp();
+      if (isa<FuncDefOp>(owningOperation)) {
+        llvm::errs() << "arg_fun_" << blockArg.getArgNumber();
+      } else if (isa<ForOp>(owningOperation)) {
+        Location loc = owningOperation->getLoc();
+        if (auto fileLoc = loc.dyn_cast<mlir::FileLineColLoc>()) {
+          llvm::errs() << "arg_for_" << fileLoc.getLine() << "_" << fileLoc.getColumn();
+        } else {
+          llvm::errs() << "Unknown Location: " << loc;
+          exit(1);
+        }
+      } else {
+        llvm::errs() << "Unknown Owning Operation: " << owningOperation;
+        exit(1);
+      }
     } else {
       llvm::errs() << "Unknown Operand: " << operand;
       exit(1);
     }
   }
 
-  void printOperation(Operation* topLevelOperation, Operation *operation) {
+  void printOperation(unsigned level, Operation* topLevelOperation, Operation *operation) {
+    llvm::errs() << indent(level);
     bool isPure =
+      isa<arith::ConstantOp>(operation) ||
+      isa<ReadArrayOp>(operation) ||
       isa<FeltConstantOp>(operation) ||
       isa<AddFeltOp>(operation) ||
       isa<SubFeltOp>(operation) ||
       isa<MulFeltOp>(operation) ||
       isa<DivFeltOp>(operation) ||
       isa<ModFeltOp>(operation) ||
+      isa<ConstReadOp>(operation) ||
       isa<FieldReadOp>(operation);
     llvm::errs() << (isPure ? "let " : "let* ");
 
@@ -199,7 +235,7 @@ private:
     if (auto constOp = dyn_cast<arith::ConstantOp>(operation)) {
       auto value = constOp.getValue();
       if (auto integerAttr = dyn_cast<IntegerAttr>(value)) {
-        llvm::errs() << "Integer.Make " << integerAttr.getValue();
+        llvm::errs() << integerAttr.getValue() << " % nat";
       } else {
         llvm::errs() << "Unknown constant value: " << value;
         exit(1);
@@ -215,10 +251,14 @@ private:
     } else if (auto readArrayOp = dyn_cast<ReadArrayOp>(operation)) {
       llvm::errs() << "Array.read ";
       printOperand(topLevelOperation, readArrayOp.getArrRef());
-      llvm::errs() << "[";
+      llvm::errs() << " [";
+      bool isFirst = true;
       for (auto index : readArrayOp.getIndices()) {
+        if (!isFirst) {
+          llvm::errs() << "; ";
+        }
+        isFirst = false;
         printOperand(topLevelOperation, index);
-        llvm::errs() << ", ";
       }
       llvm::errs() << "]";
     } else if (auto extractArrayOp = dyn_cast<ExtractArrayOp>(operation)) {
@@ -287,36 +327,49 @@ private:
     } else
     // Polymorphic operations
     if (auto constReadOp = dyn_cast<ConstReadOp>(operation)) {
-      llvm::errs() << "ConstReadOp " << constReadOp.getConstName();
+      llvm::errs() << "UnOp.from (Z.of_nat " << constReadOp.getConstName() << ")";
     } else
     // Scf operations
     if (auto forOp = dyn_cast<ForOp>(operation)) {
-      llvm::errs() << "ForOp ";
+      llvm::errs() << "M.For ";
       printOperand(topLevelOperation, forOp.getLowerBound());
-      llvm::errs() << " to ";
+      llvm::errs() << " (* to *) ";
       printOperand(topLevelOperation, forOp.getUpperBound());
-      llvm::errs() << " step ";
+      llvm::errs() << " (* step *) ";
       printOperand(topLevelOperation, forOp.getStep());
-      llvm::errs() << " initArgs: ";
-      for (auto initArg : forOp.getInitArgs()) {
-        printOperand(topLevelOperation, initArg);
-        llvm::errs() << ", ";
-      }
-      llvm::errs() << " do\n";
+      llvm::errs() << " (fun";
       Region &region = forOp.getRegion();
+      // We assume there is only one block
       for (Block &block : region) {
+        if (block.getArguments().size() != 1) {
+          llvm::errs() << "Expected 1 argument for the loop body, got ";
+          llvm::errs() << block.getArguments().size();
+          exit(1);
+        }
+        for (BlockArgument arg : block.getArguments()) {
+          llvm::errs() << " (";
+          printOperand(topLevelOperation, arg);
+          llvm::errs() << " : ";
+          printType(false, arg.getType());
+          llvm::errs() << ")";
+        }
+        llvm::errs() << " =>\n";
         for (Operation &op : block) {
-          printOperation(topLevelOperation, &op);
-          llvm::errs() << "\n";
+          printOperation(level + 1, topLevelOperation, &op);
         }
       }
+      llvm::errs() << indent(level) << ")";
     } else if (auto yieldOp = dyn_cast<YieldOp>(operation)) {
-      llvm::errs() << "YieldOp (";
+      llvm::errs() << "M.Yield [";
+      bool isFirst = true;
       for (Value result : yieldOp.getResults()) {
+        if (!isFirst) {
+          llvm::errs() << "; ";
+        }
+        isFirst = false;
         printOperand(topLevelOperation, result);
-        llvm::errs() << ", ";
       }
-      llvm::errs() << ")";
+      llvm::errs() << "]";
     } else
     // Struct operations
     if (auto fieldReadOp = dyn_cast<FieldReadOp>(operation)) {
@@ -342,10 +395,35 @@ private:
     llvm::errs() << " in\n";
   }
 
-  void printFunction(unsigned level, Operation* topLevelOperation, FuncDefOp func) {
+  void printConstParams(StructDefOp* structDefOp, bool isImplicit) {
+    auto constParams = structDefOp->getConstParamsAttr();
+    if (!constParams || constParams.empty()) {
+      return;
+    }
+    llvm::errs() << " " << (isImplicit ? "{" : "(");
+    bool isFirst = true;
+    for (auto constParam : constParams) {
+      if (!isFirst) {
+        llvm::errs() << " ";
+      }
+      isFirst = false;
+      printAttr(constParam);
+    }
+    llvm::errs() << " : nat" << (isImplicit ? "}" : ")");
+  }
+
+  void printFunction(
+    unsigned level,
+    Operation* topLevelOperation,
+    StructDefOp* structDefOp,
+    FuncDefOp func
+  ) {
     llvm::errs() << indent(level) << "Definition " << func.getName() << " {p} `{IsPrime p}";
+    if (structDefOp) {
+      printConstParams(structDefOp, true);
+    }
     for (auto arg : func.getArguments()) {
-      llvm::errs() << " (arg_" << arg.getArgNumber() << " : ";
+      llvm::errs() << " (arg_fun_" << arg.getArgNumber() << " : ";
       printType(false, arg.getType());
       llvm::errs() << ")";
     }
@@ -384,8 +462,7 @@ private:
         return;
       }
 
-      llvm::errs() << indent(level + 1);
-      printOperation(topLevelOperation, op);
+      printOperation(level + 1, topLevelOperation, op);
     });
 
     llvm::errs() << ".\n";
@@ -395,7 +472,10 @@ private:
     llvm::errs() << indent(level) << "Module " << structDefOp->getName() << ".\n";
     // Special case when there are no fields
     if (structDefOp->getFieldDefs().size() == 0) {
-      llvm::errs() << indent(level + 1) << "Inductive t : Set := Make.";
+      llvm::errs() << indent(level + 1) << "Inductive t";
+      printConstParams(structDefOp, false);
+      llvm::errs() << " : Set := Make.";
+      llvm::errs() << ".";
     } else {
       llvm::errs() << indent(level + 1) << "Record t : Set := {\n";
       for (auto fieldDefOp : structDefOp->getFieldDefs()) {
@@ -406,9 +486,9 @@ private:
       llvm::errs() << indent(level + 1) << "}.";
     }
     llvm::errs() << "\n\n";
-    printFunction(level + 1, topLevelOperation, structDefOp->getConstrainFuncOp());
+    printFunction(level + 1, topLevelOperation, structDefOp, structDefOp->getConstrainFuncOp());
     llvm::errs() << "\n";
-    printFunction(level + 1, topLevelOperation, structDefOp->getComputeFuncOp());
+    printFunction(level + 1, topLevelOperation, structDefOp, structDefOp->getComputeFuncOp());
     llvm::errs() << indent(level) << "End " << structDefOp->getName() << ".\n";
   }
 
@@ -416,7 +496,7 @@ private:
     for (Operation &operation : moduleOp->getBody()->getOperations()) {
       if (auto funcDefOp = dyn_cast<FuncDefOp>(operation)) {
         llvm::errs() << "\n";
-        printFunction(level, topLevelOperation, funcDefOp);
+        printFunction(level, topLevelOperation, nullptr, funcDefOp);
       } else if (auto includeOp = dyn_cast<IncludeOp>(operation)) {
         llvm::errs() << "\n";
         llvm::errs() << "Require Import " << includeOp.getPath() << " as " << includeOp.getSymName() << ".\n";
