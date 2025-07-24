@@ -93,12 +93,12 @@ private:
       printType(true, arrayType.getElementType());
       llvm::errs() << " [";
       bool isFirst = true;
-      for (auto dim : arrayType.getShape()) {
+      for (auto dimSize : arrayType.getDimensionSizes()) {
         if (!isFirst) {
           llvm::errs() << "; ";
         }
         isFirst = false;
-        llvm::errs() << dim;
+        printAttr(dimSize);
       }
       llvm::errs() << "]";
       if (withParens) {
@@ -186,7 +186,9 @@ private:
     llvm::errs() << indent(level);
     bool isPure =
       isa<arith::ConstantOp>(operation) ||
+      isa<CreateArrayOp>(operation) ||
       isa<ReadArrayOp>(operation) ||
+      isa<ExtractArrayOp>(operation) ||
       isa<FeltConstantOp>(operation) ||
       isa<AddFeltOp>(operation) ||
       isa<SubFeltOp>(operation) ||
@@ -243,11 +245,16 @@ private:
     } else
     // Array operations
     if (auto createArrayOp = dyn_cast<CreateArrayOp>(operation)) {
-      llvm::errs() << "Array.new ";
+      llvm::errs() << "Array.new [";
+      bool isFirst = true;
       for (auto element : createArrayOp.getElements()) {
+        if (!isFirst) {
+          llvm::errs() << "; ";
+        }
+        isFirst = false;
         printOperand(topLevelOperation, element);
-        llvm::errs() << ", ";
       }
+      llvm::errs() << "]";
     } else if (auto readArrayOp = dyn_cast<ReadArrayOp>(operation)) {
       llvm::errs() << "Array.read ";
       printOperand(topLevelOperation, readArrayOp.getArrRef());
@@ -264,10 +271,16 @@ private:
     } else if (auto extractArrayOp = dyn_cast<ExtractArrayOp>(operation)) {
       llvm::errs() << "Array.extract ";
       printOperand(topLevelOperation, extractArrayOp.getArrRef());
-      llvm::errs() << "[";
+      llvm::errs() << " [";
+      bool isFirst = true;
       for (auto index : extractArrayOp.getIndices()) {
+        if (!isFirst) {
+          llvm::errs() << "; ";
+        }
+        isFirst = false;
         printOperand(topLevelOperation, index);
       }
+      llvm::errs() << "]";
     } else
     // Constrain operations
     if (auto emitEqualityOp = dyn_cast<EmitEqualityOp>(operation)) {
@@ -319,7 +332,11 @@ private:
       }
       llvm::errs() << ")";
     } else if (auto callOp = dyn_cast<CallOp>(operation)) {
-      llvm::errs() << callOp.getCallee().getLeafReference().str();
+      auto callee = callOp.getCallee();
+      llvm::errs() << callee.getRootReference().str();
+      for (auto nestedRef : callee.getNestedReferences()) {
+        llvm::errs() << "." << nestedRef.getRootReference().str();
+      }
       for (Value operand : callOp.getArgOperands()) {
         llvm::errs() << " ";
         printOperand(topLevelOperation, operand);
@@ -412,6 +429,11 @@ private:
     llvm::errs() << " : nat" << (isImplicit ? "}" : ")");
   }
 
+  bool hasConstParams(StructDefOp* structDefOp) {
+    auto constParams = structDefOp->getConstParamsAttr();
+    return constParams && !constParams.empty();
+  }
+
   void printFunction(
     unsigned level,
     Operation* topLevelOperation,
@@ -422,14 +444,21 @@ private:
     if (structDefOp) {
       printConstParams(structDefOp, true);
     }
-    for (auto arg : func.getArguments()) {
-      llvm::errs() << " (arg_fun_" << arg.getArgNumber() << " : ";
-      printType(false, arg.getType());
+    unsigned argTypeIndex = 0;
+    for (auto argType : func.getArgumentTypes()) {
+      llvm::errs() << " (arg_fun_" << argTypeIndex << " : ";
+      printType(false, argType);
       llvm::errs() << ")";
+      argTypeIndex++;
     }
     llvm::errs() << " : M.t ";
     llvm::ArrayRef<Type> results = func.getFunctionType().getResults();
     printTypeTuple(true, results);
+    if (func.isExternal()) {
+      llvm::errs() << ".\n";
+      llvm::errs() << indent(level) << "Admitted.\n";
+      return;
+    }
     llvm::errs() << " :=\n";
 
     func.walk([&](Operation *op) {
@@ -475,15 +504,20 @@ private:
       llvm::errs() << indent(level + 1) << "Inductive t";
       printConstParams(structDefOp, false);
       llvm::errs() << " : Set := Make.";
-      llvm::errs() << ".";
     } else {
-      llvm::errs() << indent(level + 1) << "Record t : Set := {\n";
+      llvm::errs() << indent(level + 1) << "Record t";
+      printConstParams(structDefOp, true);
+      llvm::errs() << " : Set := {\n";
       for (auto fieldDefOp : structDefOp->getFieldDefs()) {
         llvm::errs() << indent(level + 2) << fieldDefOp.getSymName() << " : ";
         printType(false, fieldDefOp.getType());
         llvm::errs() << ";\n";
       }
       llvm::errs() << indent(level + 1) << "}.";
+      if (hasConstParams(structDefOp)) {
+        llvm::errs() << "\n";
+        llvm::errs() << indent(level + 1) << "Arguments t : clear implicits.";
+      }
     }
     llvm::errs() << "\n\n";
     printFunction(level + 1, topLevelOperation, structDefOp, structDefOp->getConstrainFuncOp());
@@ -499,7 +533,13 @@ private:
         printFunction(level, topLevelOperation, nullptr, funcDefOp);
       } else if (auto includeOp = dyn_cast<IncludeOp>(operation)) {
         llvm::errs() << "\n";
-        llvm::errs() << "Require Import " << includeOp.getPath() << " as " << includeOp.getSymName() << ".\n";
+        llvm::errs() << indent(level) << "(* Require Import ";
+        // Substitute the "/" with "."
+        std::string path = includeOp.getPath().str();
+        std::replace(path.begin(), path.end(), '/', '.');
+        // Remove the ".llzk" suffix
+        path = path.substr(0, path.size() - 5);
+        llvm::errs() << path << " as " << includeOp.getSymName() << ". *)\n";
       } else if (auto subModuleOp = dyn_cast<ModuleOp>(operation)) {
         mlir::Location loc = operation.getLoc();
         std::string moduleName = "Anonymous";
