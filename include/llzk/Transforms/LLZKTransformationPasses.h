@@ -29,6 +29,8 @@ std::unique_ptr<mlir::Pass> createPolyLoweringPass(unsigned maxDegree);
 
 std::unique_ptr<mlir::Pass> createR1CSLoweringPass();
 
+std::unique_ptr<mlir::Pass> createRocqPass();
+
 void registerTransformationPassPipelines();
 
 #define GEN_PASS_REGISTRATION
