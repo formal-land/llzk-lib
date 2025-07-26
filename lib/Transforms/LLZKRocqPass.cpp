@@ -106,7 +106,7 @@ private:
         isFirst = false;
         printAttr(dimSize);
       }
-      llvm::errs() << "]";
+      llvm::errs() << "]%nat";
       if (withParens) {
         llvm::errs() << ")";
       }
@@ -292,7 +292,7 @@ private:
     if (auto constOp = dyn_cast<arith::ConstantOp>(operation)) {
       auto value = constOp.getValue();
       if (auto integerAttr = dyn_cast<IntegerAttr>(value)) {
-        llvm::errs() << integerAttr.getValue();
+        llvm::errs() << integerAttr.getValue() << "%nat";
       } else {
         llvm::errs() << "Unknown constant value: " << value;
         exit(1);
@@ -458,12 +458,15 @@ private:
     llvm::errs() << " in\n";
   }
 
-  void printConstParams(StructDefOp* structDefOp, bool isImplicit) {
+  void printConstParams(StructDefOp* structDefOp, bool isImplicit, bool withParens) {
     auto constParams = structDefOp->getConstParamsAttr();
     if (!constParams || constParams.empty()) {
       return;
     }
-    llvm::errs() << " " << (isImplicit ? "{" : "(");
+    llvm::errs() << " ";
+    if (withParens) {
+      llvm::errs() << (isImplicit ? "{" : "(");
+    }
     bool isFirst = true;
     for (auto constParam : constParams) {
       if (!isFirst) {
@@ -472,7 +475,10 @@ private:
       isFirst = false;
       printAttr(constParam);
     }
-    llvm::errs() << " : nat" << (isImplicit ? "}" : ")");
+    if (withParens) {
+      llvm::errs() << " : nat";
+      llvm::errs() << (isImplicit ? "}" : ")");
+    }
   }
 
   bool hasConstParams(StructDefOp* structDefOp) {
@@ -488,7 +494,7 @@ private:
   ) {
     llvm::errs() << indent(level) << "Definition " << func.getName() << " {p} `{Prime p}";
     if (structDefOp) {
-      printConstParams(structDefOp, true);
+      printConstParams(structDefOp, true, true);
     }
     unsigned argTypeIndex = 0;
     for (auto argType : func.getArgumentTypes()) {
@@ -521,11 +527,11 @@ private:
     // Special case when there are no fields
     if (structDefOp->getFieldDefs().size() == 0) {
       llvm::errs() << indent(level + 1) << "Inductive t";
-      printConstParams(structDefOp, false);
+      printConstParams(structDefOp, false, true);
       llvm::errs() << " : Set := Make.";
     } else {
       llvm::errs() << indent(level + 1) << "Record t";
-      printConstParams(structDefOp, true);
+      printConstParams(structDefOp, true, true);
       llvm::errs() << " : Set := {\n";
       for (auto fieldDefOp : structDefOp->getFieldDefs()) {
         llvm::errs() << indent(level + 2) << fieldDefOp.getSymName() << " : ";
@@ -533,11 +539,37 @@ private:
         llvm::errs() << ";\n";
       }
       llvm::errs() << indent(level + 1) << "}.";
+      // No implicit arguments for the type itself
       if (hasConstParams(structDefOp)) {
         llvm::errs() << "\n";
         llvm::errs() << indent(level + 1) << "Arguments t : clear implicits.";
       }
     }
+    llvm::errs() << "\n\n";
+    // Add the `map_mod` operator. We also do it for types with no fields, as the function might be
+    // called in types containing it.
+    llvm::errs() << indent(level + 1) << "Global Instance IsMapMop {ρ} `{Prime ρ}";
+    printConstParams(structDefOp, true, true);
+    llvm::errs() << " : MapMod ";
+    if (hasConstParams(structDefOp)) {
+      llvm::errs() << "(t";
+      printConstParams(structDefOp, true, false);
+      llvm::errs() << ")";
+    } else {
+      llvm::errs() << "t";
+    }
+    llvm::errs() << " := {\n";
+    if (structDefOp->getFieldDefs().size() == 0) {
+      llvm::errs() << indent(level + 2) << "map_mod α := α;\n";
+    } else {
+      llvm::errs() << indent(level + 2) << "map_mod α := {|\n";
+      for (auto fieldDefOp : structDefOp->getFieldDefs()) {
+        llvm::errs() << indent(level + 3) << fieldDefOp.getSymName() << " := map_mod α.(";
+        llvm::errs() << fieldDefOp.getSymName() << ");\n";
+      }
+      llvm::errs() << indent(level + 2) << "|};\n";
+    }
+    llvm::errs() << indent(level + 1) << "}.";
     llvm::errs() << "\n\n";
     printFunction(level + 1, topLevelOperation, structDefOp, structDefOp->getConstrainFuncOp());
     llvm::errs() << "\n";
