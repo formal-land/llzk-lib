@@ -62,6 +62,17 @@ private:
     return std::string(level * 2, ' ');
   }
 
+  std::string escapeName(std::string name) {
+    std::string result = name;
+    size_t pos = result.find('$');
+    while (pos != std::string::npos) {
+      const std::string replacement = "dollar_";
+      result.replace(pos, 1, replacement);
+      pos = result.find('$', pos + replacement.length());
+    }
+    return result;
+  }
+
   void printAttr(Attribute attr) {
     if (auto symAttr = attr.dyn_cast<mlir::SymbolRefAttr>()) {
       llvm::errs() << symAttr.getRootReference().str();
@@ -446,7 +457,7 @@ private:
       printOperand(topLevelOperation, fieldWriteOp.getComponent());
       llvm::errs() << ".(";
       llvm::errs() << fieldWriteOp.getComponent().getType().getNameRef().getRootReference().str();
-      llvm::errs() << "." << fieldWriteOp.getFieldName() << ") ";
+      llvm::errs() << "." << escapeName(fieldWriteOp.getFieldName().str()) << ") ";
       printOperand(topLevelOperation, fieldWriteOp.getVal());
     } else if (auto createStructOp = dyn_cast<CreateStructOp>(operation)) {
       llvm::errs() << "M.CreateStruct";
@@ -535,7 +546,7 @@ private:
       printConstParams(structDefOp, true);
       llvm::errs() << " : Set := {\n";
       for (auto fieldDefOp : structDefOp->getFieldDefs()) {
-        llvm::errs() << indent(level + 2) << fieldDefOp.getSymName() << " : ";
+        llvm::errs() << indent(level + 2) << escapeName(fieldDefOp.getSymName().str()) << " : ";
         printType(false, fieldDefOp.getType());
         llvm::errs() << ";\n";
       }
@@ -565,8 +576,8 @@ private:
     } else {
       llvm::errs() << indent(level + 2) << "map_mod α := {|\n";
       for (auto fieldDefOp : structDefOp->getFieldDefs()) {
-        llvm::errs() << indent(level + 3) << fieldDefOp.getSymName() << " := map_mod α.(";
-        llvm::errs() << fieldDefOp.getSymName() << ");\n";
+        llvm::errs() << indent(level + 3) << escapeName(fieldDefOp.getSymName().str()) << " := map_mod α.(";
+        llvm::errs() << escapeName(fieldDefOp.getSymName().str()) << ");\n";
       }
       llvm::errs() << indent(level + 2) << "|};\n";
     }
@@ -579,10 +590,18 @@ private:
   }
 
   void printTopLevelOperations(unsigned level, Operation* topLevelOperation, ModuleOp* moduleOp) {
+    // Empty module
+    if (moduleOp->getBody()->getOperations().size() == 0) {
+      llvm::errs() << "\n";
+      llvm::errs() << indent(level) << "(* Empty module *)\n";
+      return;
+    }
     for (Operation &operation : moduleOp->getBody()->getOperations()) {
+      // Function
       if (auto funcDefOp = dyn_cast<FuncDefOp>(operation)) {
         llvm::errs() << "\n";
         printFunction(level, topLevelOperation, nullptr, funcDefOp);
+      // Include
       } else if (auto includeOp = dyn_cast<IncludeOp>(operation)) {
         llvm::errs() << "\n";
         llvm::errs() << indent(level) << "(* Require Import ";
@@ -592,6 +611,7 @@ private:
         // Remove the ".llzk" suffix
         path = path.substr(0, path.size() - 5);
         llvm::errs() << path << " as " << includeOp.getSymName() << ". *)\n";
+      // Module
       } else if (auto subModuleOp = dyn_cast<ModuleOp>(operation)) {
         mlir::Location loc = operation.getLoc();
         std::string moduleName = "Anonymous";
@@ -602,6 +622,7 @@ private:
         llvm::errs() << indent(level) << "Module Module_" << moduleName << ".";
         printTopLevelOperations(level + 1, topLevelOperation, &subModuleOp);
         llvm::errs() << indent(level) << "End Module_" << moduleName << ".\n";
+      // Struct
       } else if (auto structDefOp = dyn_cast<StructDefOp>(operation)) {
         llvm::errs() << "\n";
         printStructDefOp(level, topLevelOperation, &structDefOp);
