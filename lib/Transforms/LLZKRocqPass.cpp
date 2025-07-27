@@ -431,6 +431,7 @@ private:
         for (Operation &op : block) {
           printOperation(level + 1, topLevelOperation, &op);
         }
+        llvm::errs() << "\n";
       }
       llvm::errs() << indent(level) << ")";
     } else
@@ -458,14 +459,14 @@ private:
     llvm::errs() << " in\n";
   }
 
-  void printConstParams(StructDefOp* structDefOp, bool isImplicit, bool withParens) {
+  void printConstParams(StructDefOp* structDefOp, bool withParens) {
     auto constParams = structDefOp->getConstParamsAttr();
     if (!constParams || constParams.empty()) {
       return;
     }
     llvm::errs() << " ";
     if (withParens) {
-      llvm::errs() << (isImplicit ? "{" : "(");
+      llvm::errs() << "{";
     }
     bool isFirst = true;
     for (auto constParam : constParams) {
@@ -477,7 +478,7 @@ private:
     }
     if (withParens) {
       llvm::errs() << " : nat";
-      llvm::errs() << (isImplicit ? "}" : ")");
+      llvm::errs() << "}";
     }
   }
 
@@ -494,7 +495,7 @@ private:
   ) {
     llvm::errs() << indent(level) << "Definition " << func.getName() << " {p} `{Prime p}";
     if (structDefOp) {
-      printConstParams(structDefOp, true, true);
+      printConstParams(structDefOp, true);
     }
     unsigned argTypeIndex = 0;
     for (auto argType : func.getArgumentTypes()) {
@@ -527,11 +528,11 @@ private:
     // Special case when there are no fields
     if (structDefOp->getFieldDefs().size() == 0) {
       llvm::errs() << indent(level + 1) << "Inductive t";
-      printConstParams(structDefOp, false, true);
+      printConstParams(structDefOp, true);
       llvm::errs() << " : Set := Make.";
     } else {
       llvm::errs() << indent(level + 1) << "Record t";
-      printConstParams(structDefOp, true, true);
+      printConstParams(structDefOp, true);
       llvm::errs() << " : Set := {\n";
       for (auto fieldDefOp : structDefOp->getFieldDefs()) {
         llvm::errs() << indent(level + 2) << fieldDefOp.getSymName() << " : ";
@@ -539,21 +540,21 @@ private:
         llvm::errs() << ";\n";
       }
       llvm::errs() << indent(level + 1) << "}.";
-      // No implicit arguments for the type itself
-      if (hasConstParams(structDefOp)) {
-        llvm::errs() << "\n";
-        llvm::errs() << indent(level + 1) << "Arguments t : clear implicits.";
-      }
+    }
+    // No implicit arguments for the type itself
+    if (hasConstParams(structDefOp)) {
+      llvm::errs() << "\n";
+      llvm::errs() << indent(level + 1) << "Arguments t : clear implicits.";
     }
     llvm::errs() << "\n\n";
     // Add the `map_mod` operator. We also do it for types with no fields, as the function might be
     // called in types containing it.
     llvm::errs() << indent(level + 1) << "Global Instance IsMapMop {ρ} `{Prime ρ}";
-    printConstParams(structDefOp, true, true);
+    printConstParams(structDefOp, true);
     llvm::errs() << " : MapMod ";
     if (hasConstParams(structDefOp)) {
       llvm::errs() << "(t";
-      printConstParams(structDefOp, true, false);
+      printConstParams(structDefOp, false);
       llvm::errs() << ")";
     } else {
       llvm::errs() << "t";
