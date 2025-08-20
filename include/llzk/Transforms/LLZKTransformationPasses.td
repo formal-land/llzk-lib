@@ -81,4 +81,13 @@ def R1CSLoweringPass : LLZKPass<"llzk-r1cs-lowering"> {
   let constructor = "llzk::createR1CSLoweringPass()";
 }
 
+def RocqPass : LLZKPass<"llzk-rocq-pass"> {
+  let summary = "Pretty-print the circuit in the Rocq formal verification language";
+  let description = [{
+    Transforms LLZK constraints into an equivalent representation in the Rocq formal verification language.
+    The goal is to be able to use the Rocq formal verification tool to verify the circuit.
+  }];
+  let constructor = "llzk::createRocqPass()";
+}
+
 #endif // LLZK_TRANSFORMATION_PASSES_TD

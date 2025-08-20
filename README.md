@@ -25,3 +25,11 @@ Background and Motivation:
 How to Contribute:
 - [Code of Conduct](doc/doxygen/4_code_of_conduct.md)
 - [Contribution Guide](doc/doxygen/5_contributing.md)
+
+## Rocq output
+
+This is an ongoing development. Here are some useful commands:
+
+```sh
+time cmake --build . -j3 && ./bin/llzk-opt ../test/Analysis/constraint_dependency_graph_pass.llzk --llzk-rocq-pass >/dev/null
+```

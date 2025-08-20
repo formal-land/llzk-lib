@@ -167,6 +167,7 @@ module attributes {veridise.lang = "llzk"} {
       function.return
     }
   }
+  function.def private @Log$$extern(!string.type, !array.type<? x !felt.type>) -> !struct.type<@Component<[]>> attributes {extern}
   struct.def @Log<[]> {
     struct.field @"$super" : !struct.type<@Component<[]>>
     function.def @compute(%arg0: !string.type, %arg1: !array.type<? x !felt.type>) -> !struct.type<@Log<[]>> attributes {function.allow_witness} {
@@ -180,7 +181,7 @@ module attributes {veridise.lang = "llzk"} {
       function.return
     }
   }
-  function.def private @Log$$extern(!string.type, !array.type<? x !felt.type>) -> !struct.type<@Component<[]>> attributes {extern}
+  function.def private @Abort$$extern() -> !struct.type<@Component<[]>> attributes {extern}
   struct.def @Abort<[]> {
     struct.field @"$super" : !struct.type<@Component<[]>>
     function.def @compute() -> !struct.type<@Abort<[]>> attributes {function.allow_witness} {
@@ -194,7 +195,7 @@ module attributes {veridise.lang = "llzk"} {
       function.return
     }
   }
-  function.def private @Abort$$extern() -> !struct.type<@Component<[]>> attributes {extern}
+  function.def private @Assert$$extern(!felt.type, !string.type) -> !struct.type<@Component<[]>> attributes {extern}
   struct.def @Assert<[]> {
     struct.field @"$super" : !struct.type<@Component<[]>>
     function.def @compute(%arg0: !felt.type, %arg1: !string.type) -> !struct.type<@Assert<[]>> attributes {function.allow_witness} {
@@ -208,7 +209,6 @@ module attributes {veridise.lang = "llzk"} {
       function.return
     }
   }
-  function.def private @Assert$$extern(!felt.type, !string.type) -> !struct.type<@Component<[]>> attributes {extern}
   struct.def @AssertBit<[]> {
     struct.field @"$super" : !struct.type<@Component<[]>>
     struct.field @"$temp" : !struct.type<@Component<[]>>
